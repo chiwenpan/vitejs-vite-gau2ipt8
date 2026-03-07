@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type Entry = {
   id: string;
@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-v5";
+const STORAGE_KEY = "salary-calendar-app-v6";
 
 const defaultStores = [
   "AA",
@@ -84,11 +84,7 @@ function calcEntry(entry: Entry) {
   const commission = getCommission(netSales);
   const storeSalary = commission + Number(entry.productBonus || 0);
 
-  return {
-    netSales,
-    commission,
-    storeSalary,
-  };
+  return { netSales, commission, storeSalary };
 }
 
 function downloadExcel(filename: string, rows: (string | number)[][]) {
@@ -170,7 +166,6 @@ function App() {
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-
     try {
       const data = JSON.parse(raw);
       setStores(data.stores || defaultStores);
@@ -189,17 +184,13 @@ function App() {
     );
   }, [stores, settings, entries, deductions]);
 
-  const monthEntries = useMemo(() => {
-    const key = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return entries.filter((item) => item.date.startsWith(key));
-  }, [entries, year, month]);
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const monthEntries = entries.filter((item) => item.date.startsWith(monthKey));
 
-  const monthCalculated = useMemo(() => {
-    return monthEntries.map((entry) => ({
-      ...entry,
-      ...calcEntry(entry),
-    }));
-  }, [monthEntries]);
+  const monthCalculated = monthEntries.map((entry) => ({
+    ...entry,
+    ...calcEntry(entry),
+  }));
 
   const salesTotal = monthCalculated.reduce((sum, item) => sum + item.sales, 0);
   const tailTotal = monthCalculated.reduce((sum, item) => sum + item.tail, 0);
@@ -242,21 +233,9 @@ function App() {
     settings.idealSalary > 0 ? actualSalary / settings.idealSalary : 0;
   const neededSalesEstimate = gap <= 0 ? 0 : gap / 0.03;
 
-  const groupedByDate = useMemo(() => {
-    const map: Record<string, Entry[]> = {};
-
-    monthEntries.forEach((entry) => {
-      if (!map[entry.date]) map[entry.date] = [];
-      map[entry.date].push(entry);
-    });
-
-    return map;
-  }, [monthEntries]);
-
-  const selectedEntries = (groupedByDate[selectedDate] || []).map((entry) => ({
-    ...entry,
-    ...calcEntry(entry),
-  }));
+  const selectedEntries = entries
+    .filter((entry) => entry.date === selectedDate)
+    .map((entry) => ({ ...entry, ...calcEntry(entry) }));
 
   const monthStart = new Date(year, month, 1);
   const gridStart = new Date(monthStart);
@@ -268,17 +247,15 @@ function App() {
     return d;
   });
 
-  const preview = useMemo(() => {
-    return calcEntry({
-      id: "preview",
-      date: selectedDate,
-      store: form.store,
-      sales: Number(form.sales || 0),
-      tail: Number(form.tail || 0),
-      refund: Number(form.refund || 0),
-      productBonus: Number(form.productBonus || 0),
-    });
-  }, [form, selectedDate]);
+  const preview = calcEntry({
+    id: "preview",
+    date: selectedDate,
+    store: form.store,
+    sales: Number(form.sales || 0),
+    tail: Number(form.tail || 0),
+    refund: Number(form.refund || 0),
+    productBonus: Number(form.productBonus || 0),
+  });
 
   function openNewEntry(dateValue: string) {
     setSelectedDate(dateValue);
@@ -321,9 +298,11 @@ function App() {
       if (editId) {
         return prev.map((item) => (item.id === editId ? payload : item));
       }
-      return [...prev, payload].sort((a, b) => a.date.localeCompare(b.date));
+      const next = [...prev, payload].sort((a, b) => a.date.localeCompare(b.date));
+      return next;
     });
 
+    setSelectedDate(payload.date);
     setShowForm(false);
     setEditId(null);
   }
@@ -443,18 +422,6 @@ function App() {
             >
               下個月
             </button>
-
-            <button
-              onClick={() => openNewEntry(selectedDate)}
-              style={{
-                ...buttonStyle,
-                background: "#0f766e",
-                color: "white",
-                border: "none",
-              }}
-            >
-              新增資料
-            </button>
           </div>
         </div>
 
@@ -560,7 +527,7 @@ function App() {
               >
                 {days.map((date) => {
                   const dateValue = toDateValue(date);
-                  const dayEntries = groupedByDate[dateValue] || [];
+                  const dayEntries = entries.filter((entry) => entry.date === dateValue);
                   const calculatedEntries = dayEntries.map((entry) => ({
                     ...entry,
                     ...calcEntry(entry),
@@ -575,9 +542,7 @@ function App() {
                   return (
                     <button
                       key={dateValue}
-                      onClick={() => {
-                        setSelectedDate(dateValue);
-                      }}
+                      onClick={() => openNewEntry(dateValue)}
                       style={{
                         minHeight: 185,
                         borderRadius: 16,
@@ -626,9 +591,7 @@ function App() {
                           minHeight: 82,
                         }}
                       >
-                        {calculatedEntries.length === 0 ? (
-                          <div style={{ color: "#94a3b8" }}>—</div>
-                        ) : (
+                        {calculatedEntries.length > 0 && (
                           <>
                             {calculatedEntries.slice(0, 2).map((entry) => (
                               <div key={entry.id} style={{ marginBottom: 6 }}>
