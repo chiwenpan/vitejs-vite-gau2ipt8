@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState, useMemo } from "react";
 
 type Entry = {
   id: string;
@@ -10,1279 +10,188 @@ type Entry = {
   productBonus: number;
 };
 
-type Deduction = {
-  id: string;
-  amount: number;
-  note: string;
-};
-
-type Settings = {
-  idealSalary: number;
-  baseSalary: number;
-  mealTransport: number;
-  travelAllowance: number;
-  fixedDeduction: number;
-};
-
-const STORAGE_KEY = "salary-calendar-app-v4";
-
-const defaultStores = [
-  "AA",
-  "AD",
-  "A1",
-  "A2",
-  "A3",
-  "A5",
-  "A6",
-  "A7",
-  "A8",
-  "A9",
-  "A10",
-  "A11",
-  "A12",
-  "A13",
-  "A15",
+const stores = [
+  "AA","AD","A1","A2","A3","A5","A6","A7","A8",
+  "A9","A10","A11","A12","A13","A15"
 ];
 
-const defaultSettings: Settings = {
-  idealSalary: 150000,
-  baseSalary: 25000,
-  mealTransport: 2000,
-  travelAllowance: 3000,
-  fixedDeduction: 35000,
-};
-
-function toDateValue(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+function calcCommission(net:number){
+  if(net <= 100000) return net * 0.02
+  if(net <= 200000) return net * 0.03
+  if(net <= 300000) return net * 0.045
+  return net * 0.05
 }
 
-function formatNumber(value: number) {
-  return Number(value || 0).toLocaleString("zh-TW", {
-    maximumFractionDigits: 2,
-  });
+function App(){
+
+const [entries,setEntries] = useState<Entry[]>([])
+const [year,setYear] = useState(2026)
+const [month,setMonth] = useState(2)
+
+const [selectedDate,setSelectedDate] = useState("2026-03-01")
+const [showForm,setShowForm] = useState(false)
+
+const [form,setForm] = useState({
+store:"AA",
+sales:"",
+tail:"",
+refund:"",
+productBonus:""
+})
+
+function saveEntry(){
+
+const newEntry:Entry={
+id:crypto.randomUUID(),
+date:selectedDate,
+store:form.store,
+sales:Number(form.sales||0),
+tail:Number(form.tail||0),
+refund:Number(form.refund||0),
+productBonus:Number(form.productBonus||0)
 }
 
-function getCommission(netSales: number) {
-  if (netSales >= 0) {
-    if (netSales <= 99999) return netSales * 0.02;
-    if (netSales <= 199999) return netSales * 0.03;
-    if (netSales <= 299999) return netSales * 0.045;
-    return netSales * 0.05;
-  }
-  return netSales * 0.02;
+setEntries([...entries,newEntry])
+setShowForm(false)
+
 }
 
-function calcEntry(entry: Entry) {
-  const netSales =
-    Number(entry.sales || 0) +
-    Number(entry.tail || 0) -
-    Number(entry.refund || 0);
+const days = Array.from({length:31},(_,i)=>i+1)
 
-  const commission = getCommission(netSales);
-  const storeSalary = commission + Number(entry.productBonus || 0);
+function getDayEntries(day:number){
 
-  return { netSales, commission, storeSalary };
+const d = `${year}-03-${String(day).padStart(2,"0")}`
+
+return entries.filter(e=>e.date===d)
+
 }
 
-function downloadCsv(filename: string, rows: (string | number)[][]) {
-  const csv = rows
-    .map((row) =>
-      row
-        .map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`)
-        .join(",")
-    )
-    .join("\n");
+return(
 
-  const blob = new Blob(["\uFEFF" + csv], {
-    type: "text/csv;charset=utf-8;",
-  });
+<div style={{padding:20,fontFamily:"Microsoft JhengHei"}}>
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+<h2>私人薪資月曆</h2>
+
+<button onClick={()=>setShowForm(true)}>新增資料</button>
+
+<div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:10,marginTop:20}}>
+
+{days.map(day=>{
+
+const list = getDayEntries(day)
+
+let salary = 0
+
+list.forEach(e=>{
+const net = e.sales + e.tail - e.refund
+salary += calcCommission(net) + e.productBonus
+})
+
+return(
+
+<div
+key={day}
+onClick={()=>setSelectedDate(`2026-03-${String(day).padStart(2,"0")}`)}
+style={{
+border:"1px solid #ccc",
+borderRadius:12,
+padding:10,
+minHeight:120
+}}
+>
+
+<div>{day}</div>
+
+{list.map(e=>(
+
+<div key={e.id}>
+
+<div>{e.store}</div>
+<div>{e.sales.toLocaleString()}</div>
+
+</div>
+
+))}
+
+<div style={{color:"green",fontWeight:600}}>
+薪水 {salary.toLocaleString()}
+</div>
+
+</div>
+
+)
+
+})}
+
+</div>
+
+{showForm && (
+
+<div style={{
+position:"fixed",
+top:0,
+left:0,
+right:0,
+bottom:0,
+background:"rgba(0,0,0,0.5)",
+display:"flex",
+alignItems:"center",
+justifyContent:"center"
+}}>
+
+<div style={{background:"#fff",padding:20,borderRadius:10,width:300}}>
+
+<h3>{selectedDate}</h3>
+
+<select
+value={form.store}
+onChange={e=>setForm({...form,store:e.target.value})}
+>
+
+{stores.map(s=>(
+
+<option key={s}>{s}</option>
+
+))}
+
+</select>
+
+<input
+placeholder="業績"
+value={form.sales}
+onChange={e=>setForm({...form,sales:e.target.value})}
+/>
+
+<input
+placeholder="尾款"
+value={form.tail}
+onChange={e=>setForm({...form,tail:e.target.value})}
+/>
+
+<input
+placeholder="退款"
+value={form.refund}
+onChange={e=>setForm({...form,refund:e.target.value})}
+/>
+
+<input
+placeholder="產品獎金"
+value={form.productBonus}
+onChange={e=>setForm({...form,productBonus:e.target.value})}
+/>
+
+<button onClick={saveEntry}>儲存</button>
+
+</div>
+
+</div>
+
+)}
+
+</div>
+
+)
+
 }
 
-function App() {
-  const today = new Date();
-
-  const [tab, setTab] = useState<
-    "calendar" | "summary" | "deductions" | "settings"
-  >("calendar");
-
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
-  const [stores, setStores] = useState<string[]>(defaultStores);
-  const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [deductions, setDeductions] = useState<Deduction[]>([]);
-  const [selectedDate, setSelectedDate] = useState(toDateValue(today));
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-
-  const [form, setForm] = useState({
-    store: defaultStores[0],
-    sales: "",
-    tail: "",
-    refund: "",
-    productBonus: "",
-  });
-
-  const [deductionForm, setDeductionForm] = useState({
-    amount: "",
-    note: "",
-  });
-
-  const [newStore, setNewStore] = useState("");
-
-  useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-
-    try {
-      const data = JSON.parse(raw);
-      setStores(data.stores || defaultStores);
-      setSettings(data.settings || defaultSettings);
-      setEntries(data.entries || []);
-      setDeductions(data.deductions || []);
-    } catch {
-      //
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ stores, settings, entries, deductions })
-    );
-  }, [stores, settings, entries, deductions]);
-
-  const monthEntries = useMemo(() => {
-    const key = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return entries.filter((item) => item.date.startsWith(key));
-  }, [entries, year, month]);
-
-  const monthCalculated = monthEntries.map((entry) => ({
-    ...entry,
-    ...calcEntry(entry),
-  }));
-
-  const salesTotal = monthCalculated.reduce((sum, item) => sum + item.sales, 0);
-  const tailTotal = monthCalculated.reduce((sum, item) => sum + item.tail, 0);
-  const refundTotal = monthCalculated.reduce(
-    (sum, item) => sum + item.refund,
-    0
-  );
-  const netSalesTotal = monthCalculated.reduce(
-    (sum, item) => sum + item.netSales,
-    0
-  );
-  const commissionTotal = monthCalculated.reduce(
-    (sum, item) => sum + item.commission,
-    0
-  );
-  const productBonusTotal = monthCalculated.reduce(
-    (sum, item) => sum + item.productBonus,
-    0
-  );
-
-  const fixedIncome =
-    settings.baseSalary +
-    settings.mealTransport +
-    settings.travelAllowance;
-
-  const otherDeductionTotal = deductions.reduce(
-    (sum, item) => sum + item.amount,
-    0
-  );
-
-  const actualSalary =
-    fixedIncome +
-    commissionTotal +
-    productBonusTotal -
-    settings.fixedDeduction -
-    otherDeductionTotal;
-
-  const gap = settings.idealSalary - actualSalary;
-  const progress =
-    settings.idealSalary > 0 ? actualSalary / settings.idealSalary : 0;
-  const neededSalesEstimate = gap <= 0 ? 0 : gap / 0.03;
-
-  const groupedByDate = useMemo(() => {
-    const map: Record<string, Entry[]> = {};
-    monthEntries.forEach((entry) => {
-      if (!map[entry.date]) map[entry.date] = [];
-      map[entry.date].push(entry);
-    });
-    return map;
-  }, [monthEntries]);
-
-  const selectedEntries = (groupedByDate[selectedDate] || []).map((entry) => ({
-    ...entry,
-    ...calcEntry(entry),
-  }));
-
-  const monthStart = new Date(year, month, 1);
-  const startGrid = new Date(monthStart);
-  startGrid.setDate(monthStart.getDate() - monthStart.getDay());
-
-  const days = Array.from({ length: 42 }, (_, index) => {
-    const d = new Date(startGrid);
-    d.setDate(startGrid.getDate() + index);
-    return d;
-  });
-
-  function openNewEntry(dateValue: string) {
-    setSelectedDate(dateValue);
-    setEditId(null);
-    setForm({
-      store: stores[0] || "",
-      sales: "",
-      tail: "",
-      refund: "",
-      productBonus: "",
-    });
-    setShowForm(true);
-  }
-
-  function openEdit(entry: Entry) {
-    setSelectedDate(entry.date);
-    setEditId(entry.id);
-    setForm({
-      store: entry.store,
-      sales: String(entry.sales || 0),
-      tail: String(entry.tail || 0),
-      refund: String(entry.refund || 0),
-      productBonus: String(entry.productBonus || 0),
-    });
-    setShowForm(true);
-  }
-
-  function saveEntry() {
-    const payload: Entry = {
-      id: editId || crypto.randomUUID(),
-      date: selectedDate,
-      store: form.store,
-      sales: Number(form.sales || 0),
-      tail: Number(form.tail || 0),
-      refund: Number(form.refund || 0),
-      productBonus: Number(form.productBonus || 0),
-    };
-
-    setEntries((prev) => {
-      if (editId) {
-        return prev.map((item) => (item.id === editId ? payload : item));
-      }
-      return [...prev, payload].sort((a, b) => a.date.localeCompare(b.date));
-    });
-
-    setShowForm(false);
-    setEditId(null);
-  }
-
-  function deleteEntry(id: string) {
-    setEntries((prev) => prev.filter((item) => item.id !== id));
-    setShowForm(false);
-    setEditId(null);
-  }
-
-  function addDeduction() {
-    if (!deductionForm.amount) return;
-
-    setDeductions((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        amount: Number(deductionForm.amount),
-        note: deductionForm.note,
-      },
-    ]);
-
-    setDeductionForm({ amount: "", note: "" });
-  }
-
-  function addStore() {
-    const value = newStore.trim().toUpperCase();
-    if (!value || stores.includes(value)) return;
-
-    setStores((prev) =>
-      [...prev, value].sort((a, b) =>
-        a.localeCompare(b, undefined, { numeric: true })
-      )
-    );
-    setNewStore("");
-  }
-
-  function exportAccountantReport() {
-    const rows: (string | number)[][] = [
-      ["日期", "店家", "業績", "尾款", "退款", "實算業績", "產品獎金"],
-      ...monthCalculated.map((item) => [
-        item.date,
-        item.store,
-        item.sales,
-        item.tail,
-        item.refund,
-        item.netSales,
-        item.productBonus,
-      ]),
-    ];
-
-    downloadCsv(
-      `${year}-${String(month + 1).padStart(2, "0")}_每日業績明細.csv`,
-      rows
-    );
-  }
-
-  const preview = calcEntry({
-    id: "preview",
-    date: selectedDate,
-    store: form.store,
-    sales: Number(form.sales || 0),
-    tail: Number(form.tail || 0),
-    refund: Number(form.refund || 0),
-    productBonus: Number(form.productBonus || 0),
-  });
-
-  return (
-    <div style={appStyle}>
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
-        <div style={headerWrapStyle}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 28 }}>私人薪資月曆 App</h1>
-            <div style={{ color: "#64748b", marginTop: 6 }}>
-              逐店分開計算，最後再加總每日薪水。
-            </div>
-          </div>
-
-          <div style={toolbarStyle}>
-            <button
-              onClick={() => {
-                const d = new Date(year, month - 1, 1);
-                setYear(d.getFullYear());
-                setMonth(d.getMonth());
-                const selected = new Date(selectedDate);
-                selected.setFullYear(d.getFullYear());
-                selected.setMonth(d.getMonth());
-                setSelectedDate(toDateValue(selected));
-              }}
-              style={buttonStyle}
-            >
-              上個月
-            </button>
-
-            <div style={{ minWidth: 120, textAlign: "center", fontWeight: 700 }}>
-              {year} / {month + 1} 月
-            </div>
-
-            <button
-              onClick={() => {
-                const d = new Date(year, month + 1, 1);
-                setYear(d.getFullYear());
-                setMonth(d.getMonth());
-                const selected = new Date(selectedDate);
-                selected.setFullYear(d.getFullYear());
-                selected.setMonth(d.getMonth());
-                setSelectedDate(toDateValue(selected));
-              }}
-              style={buttonStyle}
-            >
-              下個月
-            </button>
-
-            <button
-              onClick={() => openNewEntry(selectedDate)}
-              style={{
-                ...buttonStyle,
-                background: "#0f766e",
-                color: "white",
-                border: "none",
-              }}
-            >
-              新增資料
-            </button>
-          </div>
-        </div>
-
-        {tab === "calendar" && (
-          <div style={topCardsGridStyle}>
-            <div style={summaryCardStyle}>
-              <div style={summaryTitleStyle}>本月薪水</div>
-              <div style={summaryValueStyle}>{formatNumber(actualSalary)}</div>
-            </div>
-            <div style={summaryCardStyle}>
-              <div style={summaryTitleStyle}>距離理想薪資差距</div>
-              <div
-                style={{
-                  ...summaryValueStyle,
-                  color: gap > 0 ? "#dc2626" : "#047857",
-                }}
-              >
-                {formatNumber(gap)}
-              </div>
-            </div>
-            <div style={summaryCardStyle}>
-              <div style={summaryTitleStyle}>尚需業績估算</div>
-              <div style={summaryValueStyle}>{formatNumber(neededSalesEstimate)}</div>
-            </div>
-            <div style={summaryCardStyle}>
-              <div style={summaryTitleStyle}>達成率</div>
-              <div style={summaryValueStyle}>{(progress * 100).toFixed(1)}%</div>
-            </div>
-          </div>
-        )}
-
-        <div style={tabWrapStyle}>
-          <button
-            onClick={() => setTab("calendar")}
-            style={tab === "calendar" ? activeTabStyle : tabStyle}
-          >
-            月曆
-          </button>
-          <button
-            onClick={() => setTab("summary")}
-            style={tab === "summary" ? activeTabStyle : tabStyle}
-          >
-            月統計
-          </button>
-          <button
-            onClick={() => setTab("deductions")}
-            style={tab === "deductions" ? activeTabStyle : tabStyle}
-          >
-            扣薪
-          </button>
-          <button
-            onClick={() => setTab("settings")}
-            style={tab === "settings" ? activeTabStyle : tabStyle}
-          >
-            設定
-          </button>
-        </div>
-
-        {tab === "calendar" && (
-          <>
-            <div style={panelStyle}>
-              <div style={weekGridStyle}>
-                {["日", "一", "二", "三", "四", "五", "六"].map((name) => (
-                  <div key={name} style={weekNameStyle}>
-                    {name}
-                  </div>
-                ))}
-              </div>
-
-              <div style={calendarGridStyle}>
-                {days.map((date) => {
-                  const dateValue = toDateValue(date);
-                  const dayEntries = groupedByDate[dateValue] || [];
-                  const salaryTotal = dayEntries.reduce(
-                    (sum, entry) => sum + calcEntry(entry).storeSalary,
-                    0
-                  );
-                  const inMonth = date.getMonth() === month;
-                  const hasRefund = dayEntries.some((item) => item.refund > 0);
-
-                  return (
-                    <button
-                      key={dateValue}
-                      onClick={() => setSelectedDate(dateValue)}
-                      style={{
-                        ...dayCellStyle,
-                        opacity: inMonth ? 1 : 0.45,
-                        border:
-                          selectedDate === dateValue
-                            ? "2px solid #0f766e"
-                            : "1px solid #dbe4ee",
-                      }}
-                    >
-                      <div style={dayHeaderStyle}>
-                        <div style={{ fontWeight: 700 }}>{date.getDate()}</div>
-                        {hasRefund ? (
-                          <div style={refundBadgeStyle}>退款</div>
-                        ) : (
-                          <div />
-                        )}
-                      </div>
-
-                      <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                        {dayEntries.length === 0 ? (
-                          <div style={{ color: "#94a3b8" }}>—</div>
-                        ) : (
-                          <>
-                            {dayEntries.slice(0, 2).map((entry) => (
-                              <div key={entry.id} style={{ marginBottom: 4 }}>
-                                <div style={{ fontWeight: 700 }}>{entry.store}</div>
-                                <div
-                                  style={{
-                                    color:
-                                      entry.refund > 0 ? "#dc2626" : "#334155",
-                                  }}
-                                >
-                                  業績 {formatNumber(entry.sales)}
-                                </div>
-                              </div>
-                            ))}
-                            {dayEntries.length > 2 && (
-                              <div style={{ color: "#64748b" }}>
-                                +{dayEntries.length - 2} 筆
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-
-                      <div style={daySalaryStyle}>
-                        當日薪水 {formatNumber(salaryTotal)}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div style={{ ...panelStyle, marginTop: 16 }}>
-              <div style={detailHeaderStyle}>
-                <h2 style={{ margin: 0, fontSize: 22 }}>{selectedDate} 明細</h2>
-                <button
-                  onClick={() => openNewEntry(selectedDate)}
-                  style={{
-                    ...buttonStyle,
-                    background: "#0f766e",
-                    color: "white",
-                    border: "none",
-                  }}
-                >
-                  這一天新增資料
-                </button>
-              </div>
-
-              {selectedEntries.length === 0 ? (
-                <div style={{ color: "#64748b" }}>這一天還沒有資料。</div>
-              ) : (
-                <div style={{ display: "grid", gap: 12 }}>
-                  {selectedEntries.map((entry) => (
-                    <div key={entry.id} style={entryCardStyle}>
-                      <div style={entryRowStyle}>
-                        <div style={{ lineHeight: 1.7 }}>
-                          <div style={{ fontWeight: 700, fontSize: 18 }}>
-                            {entry.store}
-                          </div>
-                          <div>業績：{formatNumber(entry.sales)}</div>
-                          <div>尾款：{formatNumber(entry.tail)}</div>
-                          <div
-                            style={{
-                              color: entry.refund > 0 ? "#dc2626" : undefined,
-                            }}
-                          >
-                            退款：{formatNumber(entry.refund)}
-                          </div>
-                          <div>產品獎金：{formatNumber(entry.productBonus)}</div>
-                          <div>業績獎金：{formatNumber(entry.commission)}</div>
-                          <div style={{ fontWeight: 700, color: "#047857" }}>
-                            店家薪水：{formatNumber(entry.storeSalary)}
-                          </div>
-                        </div>
-
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => openEdit(entry)} style={buttonStyle}>
-                            編輯
-                          </button>
-                          <button
-                            onClick={() => deleteEntry(entry.id)}
-                            style={{ ...buttonStyle, color: "#dc2626" }}
-                          >
-                            刪除
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div style={dayTotalStyle}>
-                當天總薪水：
-                {formatNumber(
-                  selectedEntries.reduce((sum, entry) => sum + entry.storeSalary, 0)
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        {tab === "summary" && (
-          <>
-            <div style={topCardsGridStyle}>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>當月業績總和</div>
-                <div style={summaryValueStyle}>{formatNumber(salesTotal)}</div>
-              </div>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>當月尾款總和</div>
-                <div style={summaryValueStyle}>{formatNumber(tailTotal)}</div>
-              </div>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>當月退款總和</div>
-                <div style={{ ...summaryValueStyle, color: "#dc2626" }}>
-                  {formatNumber(refundTotal)}
-                </div>
-              </div>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>當月實算業績</div>
-                <div style={summaryValueStyle}>{formatNumber(netSalesTotal)}</div>
-              </div>
-            </div>
-
-            <div style={twoColGridStyle}>
-              <div style={panelStyle}>
-                <h2 style={{ marginTop: 0 }}>薪資統計</h2>
-                <Row label="業績獎金總和" value={commissionTotal} />
-                <Row label="產品獎金總和" value={productBonusTotal} />
-                <Row label="底薪" value={settings.baseSalary} />
-                <Row label="伙食+車資" value={settings.mealTransport} />
-                <Row label="跑店津貼" value={settings.travelAllowance} />
-                <Row label="固定收入合計" value={fixedIncome} strong />
-                <Row label="固定扣薪" value={settings.fixedDeduction} />
-                <Row label="其他扣薪" value={otherDeductionTotal} />
-                <div style={{ borderTop: "1px solid #e5e7eb", marginTop: 12, paddingTop: 12 }}>
-                  <Row
-                    label="目前實際薪水"
-                    value={actualSalary}
-                    strong
-                    color="#047857"
-                  />
-                </div>
-              </div>
-
-              <div style={panelStyle}>
-                <div style={summaryHeadRowStyle}>
-                  <h2 style={{ margin: 0 }}>目標追蹤</h2>
-                  <button
-                    onClick={exportAccountantReport}
-                    style={{
-                      ...buttonStyle,
-                      background: "#0f766e",
-                      color: "white",
-                      border: "none",
-                    }}
-                  >
-                    匯出會計明細
-                  </button>
-                </div>
-
-                <div style={{ marginTop: 16 }}>
-                  <Row label="理想薪資" value={settings.idealSalary} />
-                  <Row label="差距" value={gap} />
-                  <div style={ratioRowStyle}>
-                    <span>達成率</span>
-                    <span style={{ fontWeight: 700 }}>
-                      {(progress * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <Row label="尚需業績估算" value={neededSalesEstimate} strong />
-                  <div style={{ color: "#64748b", marginTop: 12, fontSize: 14 }}>
-                    尚需業績用 3% 平均抽成估算。
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {tab === "deductions" && (
-          <div style={panelStyle}>
-            <h2 style={{ marginTop: 0 }}>其他扣薪＋備註</h2>
-
-            <div style={deductionInputGridStyle}>
-              <input
-                value={deductionForm.amount}
-                onChange={(e) =>
-                  setDeductionForm((prev) => ({
-                    ...prev,
-                    amount: e.target.value,
-                  }))
-                }
-                placeholder="扣薪金額"
-                style={inputStyle}
-              />
-              <input
-                value={deductionForm.note}
-                onChange={(e) =>
-                  setDeductionForm((prev) => ({
-                    ...prev,
-                    note: e.target.value,
-                  }))
-                }
-                placeholder="備註"
-                style={inputStyle}
-              />
-              <button
-                onClick={addDeduction}
-                style={{
-                  ...buttonStyle,
-                  background: "#0f766e",
-                  color: "white",
-                  border: "none",
-                }}
-              >
-                新增
-              </button>
-            </div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              {deductions.length === 0 ? (
-                <div style={{ color: "#64748b" }}>目前沒有其他扣薪。</div>
-              ) : null}
-
-              {deductions.map((item) => (
-                <div key={item.id} style={deductionCardStyle}>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{formatNumber(item.amount)}</div>
-                    <div style={{ color: "#64748b", fontSize: 14 }}>
-                      {item.note || "無備註"}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() =>
-                      setDeductions((prev) =>
-                        prev.filter((d) => d.id !== item.id)
-                      )
-                    }
-                    style={buttonStyle}
-                  >
-                    刪除
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {tab === "settings" && (
-          <div style={twoColGridStyle}>
-            <div style={panelStyle}>
-              <h2 style={{ marginTop: 0 }}>薪資設定</h2>
-              <Field label="理想薪資">
-                <input
-                  value={settings.idealSalary}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      idealSalary: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="底薪">
-                <input
-                  value={settings.baseSalary}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      baseSalary: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="伙食+車資">
-                <input
-                  value={settings.mealTransport}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      mealTransport: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="跑店津貼">
-                <input
-                  value={settings.travelAllowance}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      travelAllowance: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="固定扣薪">
-                <input
-                  value={settings.fixedDeduction}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      fixedDeduction: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-            </div>
-
-            <div style={panelStyle}>
-              <h2 style={{ marginTop: 0 }}>店家設定</h2>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <input
-                  value={newStore}
-                  onChange={(e) => setNewStore(e.target.value)}
-                  placeholder="新增店家，例如 A26"
-                  style={inputStyle}
-                />
-                <button
-                  onClick={addStore}
-                  style={{
-                    ...buttonStyle,
-                    background: "#0f766e",
-                    color: "white",
-                    border: "none",
-                  }}
-                >
-                  新增
-                </button>
-              </div>
-
-              <div style={storeGridStyle}>
-                {stores.map((store) => (
-                  <div key={store} style={storeChipStyle}>
-                    {store}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {showForm && (
-        <div style={overlayStyle}>
-          <div style={modalStyle}>
-            <h2 style={{ marginTop: 0 }}>
-              {editId ? "編輯資料" : "新增資料"}｜{selectedDate}
-            </h2>
-
-            <Field label="店家">
-              <select
-                value={form.store}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, store: e.target.value }))
-                }
-                style={inputStyle}
-              >
-                {stores.map((store) => (
-                  <option key={store} value={store}>
-                    {store}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="業績">
-              <input
-                value={form.sales}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, sales: e.target.value }))
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="尾款">
-              <input
-                value={form.tail}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, tail: e.target.value }))
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="退款">
-              <input
-                value={form.refund}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, refund: e.target.value }))
-                }
-                style={{ ...inputStyle, color: "#dc2626" }}
-              />
-            </Field>
-
-            <Field label="產品獎金">
-              <input
-                value={form.productBonus}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    productBonus: e.target.value,
-                  }))
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <div style={previewBoxStyle}>
-              <div>實算業績：{formatNumber(preview.netSales)}</div>
-              <div>業績獎金：{formatNumber(preview.commission)}</div>
-              <div style={{ fontWeight: 700, color: "#047857" }}>
-                店家薪水：{formatNumber(preview.storeSalary)}
-              </div>
-            </div>
-
-            <div style={modalFooterStyle}>
-              <div>
-                {editId ? (
-                  <button
-                    onClick={() => deleteEntry(editId)}
-                    style={{ ...buttonStyle, color: "#dc2626" }}
-                  >
-                    刪除
-                  </button>
-                ) : null}
-              </div>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => {
-                    setShowForm(false);
-                    setEditId(null);
-                  }}
-                  style={buttonStyle}
-                >
-                  取消
-                </button>
-                <button
-                  onClick={saveEntry}
-                  style={{
-                    ...buttonStyle,
-                    background: "#0f766e",
-                    color: "white",
-                    border: "none",
-                  }}
-                >
-                  儲存
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  strong,
-  color,
-}: {
-  label: string;
-  value: number;
-  strong?: boolean;
-  color?: string;
-}) {
-  return (
-    <div style={rowStyle}>
-      <span>{label}</span>
-      <span style={{ fontWeight: strong ? 700 : 500, color }}>
-        {formatNumber(value)}
-      </span>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ marginBottom: 6, fontWeight: 700 }}>{label}</div>
-      {children}
-    </div>
-  );
-}
-
-const appStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  background: "#f5f7fb",
-  fontFamily:
-    '"Noto Sans TC", "Microsoft JhengHei", "PingFang TC", "Heiti TC", sans-serif',
-  color: "#111827",
-};
-
-const headerWrapStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 12,
-  justifyContent: "space-between",
-  alignItems: "center",
-  flexWrap: "wrap",
-  marginBottom: 16,
-};
-
-const toolbarStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-  flexWrap: "wrap",
-};
-
-const topCardsGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
-  marginBottom: 16,
-};
-
-const tabWrapStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  marginBottom: 16,
-};
-
-const weekGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(7, 1fr)",
-  gap: 8,
-  marginBottom: 8,
-};
-
-const weekNameStyle: React.CSSProperties = {
-  textAlign: "center",
-  fontWeight: 700,
-  color: "#64748b",
-};
-
-const calendarGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(7, 1fr)",
-  gap: 8,
-};
-
-const dayCellStyle: React.CSSProperties = {
-  minHeight: 170,
-  borderRadius: 16,
-  background: "white",
-  padding: 10,
-  textAlign: "left",
-  cursor: "pointer",
-};
-
-const dayHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  marginBottom: 8,
-};
-
-const refundBadgeStyle: React.CSSProperties = {
-  color: "#dc2626",
-  fontSize: 12,
-  fontWeight: 700,
-};
-
-const daySalaryStyle: React.CSSProperties = {
-  marginTop: 8,
-  paddingTop: 8,
-  borderTop: "1px solid #e5e7eb",
-  fontWeight: 700,
-  color: "#047857",
-  fontSize: 13,
-};
-
-const detailHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 12,
-  flexWrap: "wrap",
-  gap: 8,
-};
-
-const entryCardStyle: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 16,
-  padding: 14,
-  background: "white",
-};
-
-const entryRowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const dayTotalStyle: React.CSSProperties = {
-  marginTop: 14,
-  textAlign: "right",
-  fontSize: 18,
-  fontWeight: 700,
-};
-
-const twoColGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 16,
-  marginTop: 16,
-};
-
-const summaryHeadRowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const ratioRowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  padding: "10px 0",
-  borderBottom: "1px solid #eef2f7",
-};
-
-const deductionInputGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "180px 1fr 120px",
-  gap: 8,
-  marginBottom: 16,
-};
-
-const deductionCardStyle: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
-  padding: 12,
-  background: "white",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-};
-
-const storeGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(4, 1fr)",
-  gap: 8,
-};
-
-const storeChipStyle: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  padding: 10,
-  textAlign: "center",
-  background: "white",
-  fontWeight: 700,
-};
-
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  padding: "10px 0",
-  borderBottom: "1px solid #eef2f7",
-};
-
-const buttonStyle: React.CSSProperties = {
-  fontFamily: "inherit",
-  border: "1px solid #cbd5e1",
-  background: "white",
-  borderRadius: 12,
-  padding: "10px 14px",
-  cursor: "pointer",
-  fontWeight: 700,
-};
-
-const tabStyle: React.CSSProperties = {
-  ...buttonStyle,
-  background: "white",
-};
-
-const activeTabStyle: React.CSSProperties = {
-  ...buttonStyle,
-  background: "#0f766e",
-  color: "white",
-  border: "none",
-};
-
-const panelStyle: React.CSSProperties = {
-  background: "#ffffff",
-  borderRadius: 20,
-  padding: 16,
-  border: "1px solid #e5e7eb",
-  boxShadow: "0 6px 20px rgba(15, 23, 42, 0.05)",
-};
-
-const summaryCardStyle: React.CSSProperties = {
-  background: "white",
-  borderRadius: 20,
-  padding: 16,
-  border: "1px solid #e5e7eb",
-  boxShadow: "0 6px 20px rgba(15, 23, 42, 0.05)",
-};
-
-const summaryTitleStyle: React.CSSProperties = {
-  color: "#64748b",
-  fontSize: 14,
-};
-
-const summaryValueStyle: React.CSSProperties = {
-  fontWeight: 700,
-  fontSize: 28,
-  marginTop: 6,
-};
-
-const inputStyle: React.CSSProperties = {
-  fontFamily: "inherit",
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  boxSizing: "border-box",
-};
-
-const overlayStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 16,
-};
-
-const modalStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 520,
-  background: "white",
-  borderRadius: 20,
-  padding: 20,
-  boxSizing: "border-box",
-};
-
-const previewBoxStyle: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
-  padding: 12,
-  background: "#f8fafc",
-  marginTop: 12,
-  lineHeight: 1.8,
-};
-
-const modalFooterStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 8,
-  marginTop: 16,
-  flexWrap: "wrap",
-};
-
-export default App;
+export default App
