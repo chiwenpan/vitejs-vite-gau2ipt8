@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-v10";
+const STORAGE_KEY = "salary-calendar-app-stable-v11";
 
 const defaultStores = [
   "AA",
@@ -409,7 +409,15 @@ export default function App() {
   }
 
   const calendarMinWidth =
-    zoom <= 0.7 ? 720 : zoom <= 0.8 ? 800 : zoom <= 0.9 ? 880 : zoom <= 1 ? 980 : 1120;
+    zoom <= 0.6
+      ? 680
+      : zoom <= 0.7
+      ? 760
+      : zoom <= 0.8
+      ? 840
+      : zoom <= 0.9
+      ? 920
+      : 980;
 
   return (
     <div
@@ -547,7 +555,7 @@ export default function App() {
             <>
               <button
                 onClick={() =>
-                  setZoom((z) => Math.max(0.7, Number((z - 0.1).toFixed(2))))
+                  setZoom((z) => Math.max(0.6, Number((z - 0.1).toFixed(2))))
                 }
                 style={buttonStyle}
               >
@@ -555,7 +563,7 @@ export default function App() {
               </button>
               <button
                 onClick={() =>
-                  setZoom((z) => Math.min(1.2, Number((z + 0.1).toFixed(2))))
+                  setZoom((z) => Math.min(1.1, Number((z + 0.1).toFixed(2))))
                 }
                 style={buttonStyle}
               >
@@ -615,7 +623,7 @@ export default function App() {
                       return (
                         <button
                           key={dateValue}
-                          onClick={() => openNewEntry(dateValue)}
+                          onClick={() => setSelectedDate(dateValue)}
                           style={{
                             minHeight: 132,
                             borderRadius: 16,
@@ -725,7 +733,7 @@ export default function App() {
                   gap: 8,
                 }}
               >
-                <h2 style={{ margin: 0, fontSize: 22 }}>{selectedDate} 明細</h2>
+                <h2 style={{ margin: 0, fontSize: 22 }}>{selectedDate}明細</h2>
                 <button
                   onClick={() => openNewEntry(selectedDate)}
                   style={{
@@ -777,7 +785,7 @@ export default function App() {
                           <div>產品獎金：{formatNumber(entry.productBonus)}</div>
                           <div>業績獎金：{formatNumber(entry.commission)}</div>
                           <div style={{ fontWeight: 700, color: "#047857" }}>
-                            店家薪水：{formatNumber(entry.storeSalary)}
+                            店家薪資：{formatNumber(entry.storeSalary)}
                           </div>
                         </div>
 
