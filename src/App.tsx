@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-v15-final";
+const STORAGE_KEY = "salary-calendar-app-v16-final";
 
 const defaultStores = [
   "AA",
@@ -132,6 +132,7 @@ function downloadExcel(filename: string, rows: (string | number)[][]) {
     <html>
       <head>
         <meta charset="UTF-8" />
+        <title>${filename}</title>
       </head>
       <body>
         <table>
@@ -146,11 +147,19 @@ function downloadExcel(filename: string, rows: (string | number)[][]) {
   });
 
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 3000);
 }
 
 export default function App() {
@@ -407,6 +416,11 @@ export default function App() {
         item.productBonus,
       ]),
     ];
+
+    if (rows.length <= 1) {
+      alert("這個月份沒有資料可以匯出");
+      return;
+    }
 
     downloadExcel(
       `${year}-${String(month + 1).padStart(2, "0")}_每日業績明細.xls`,
@@ -949,7 +963,8 @@ export default function App() {
                 >
                   <h2 style={{ margin: 0 }}>目標追蹤</h2>
                   <button
-                    onClick={exportAccountantReport}
+                    type="button"
+                    onClick={() => exportAccountantReport()}
                     style={{
                       ...buttonStyle,
                       background: "#0f766e",
@@ -994,9 +1009,10 @@ export default function App() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "180px 1fr 120px",
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                 gap: 8,
                 marginBottom: 16,
+                alignItems: "stretch",
               }}
             >
               <input
@@ -1030,6 +1046,8 @@ export default function App() {
                   background: "#0f766e",
                   color: "white",
                   border: "none",
+                  width: "100%",
+                  minHeight: 48,
                 }}
               >
                 新增
@@ -1052,9 +1070,11 @@ export default function App() {
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    gap: 12,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <div>
+                  <div style={{ minWidth: 0, flex: "1 1 180px" }}>
                     <div style={{ fontWeight: 700 }}>{formatNumber(item.amount)}</div>
                     <div style={{ color: "#64748b", fontSize: 14 }}>
                       {item.note || "無備註"}
@@ -1066,7 +1086,11 @@ export default function App() {
                         prev.filter((d) => d.id !== item.id)
                       )
                     }
-                    style={buttonStyle}
+                    style={{
+                      ...buttonStyle,
+                      flex: "0 0 auto",
+                      minWidth: 88,
+                    }}
                   >
                     刪除
                   </button>
