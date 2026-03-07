@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type Entry = {
   id: string;
@@ -197,7 +197,8 @@ function App() {
     settings.fixedDeduction -
     otherDeductionTotal;
   const gap = settings.idealSalary - actualSalary;
-  const progress = settings.idealSalary > 0 ? actualSalary / settings.idealSalary : 0;
+  const progress =
+    settings.idealSalary > 0 ? actualSalary / settings.idealSalary : 0;
   const neededSalesEstimate = gap <= 0 ? 0 : gap / 0.03;
 
   const groupedByDate = useMemo(() => {
