@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Entry = {
   id: string;
@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-v12";
+const STORAGE_KEY = "salary-calendar-app-v15-final";
 
 const defaultStores = [
   "AA",
@@ -155,6 +155,7 @@ function downloadExcel(filename: string, rows: (string | number)[][]) {
 
 export default function App() {
   const today = new Date();
+  const todayValue = toDateValue(today);
 
   const [tab, setTab] = useState<
     "calendar" | "summary" | "deductions" | "settings"
@@ -169,7 +170,7 @@ export default function App() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [deductions, setDeductions] = useState<Deduction[]>([]);
 
-  const [selectedDate, setSelectedDate] = useState(toDateValue(today));
+  const [selectedDate, setSelectedDate] = useState(todayValue);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
 
@@ -187,6 +188,10 @@ export default function App() {
   });
 
   const [newStore, setNewStore] = useState("");
+
+  const tailInputRef = useRef<HTMLInputElement | null>(null);
+  const refundInputRef = useRef<HTMLInputElement | null>(null);
+  const productBonusInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -345,6 +350,7 @@ export default function App() {
 
     setShowForm(false);
     setEditId(null);
+    setSelectedDate(payload.date);
   }
 
   function deleteEntry(id: string) {
@@ -410,14 +416,14 @@ export default function App() {
 
   const calendarMinWidth =
     zoom <= 0.6
-      ? 680
+      ? 780
       : zoom <= 0.7
-      ? 760
+      ? 860
       : zoom <= 0.8
-      ? 840
+      ? 940
       : zoom <= 0.9
-      ? 920
-      : 980;
+      ? 1020
+      : 1100;
 
   return (
     <div
@@ -619,6 +625,7 @@ export default function App() {
                       const hasRefund = calculatedEntries.some(
                         (item) => item.refund > 0
                       );
+                      const isToday = dateValue === todayValue;
 
                       return (
                         <div
@@ -654,9 +661,32 @@ export default function App() {
                                 alignItems: "center",
                               }}
                             >
-                              <div style={{ fontWeight: 700, fontSize: 16 }}>
-                                {date.getDate()}
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  fontSize: 16,
+                                  display: "flex",
+                                  gap: 6,
+                                  alignItems: "center",
+                                }}
+                              >
+                                <span>{date.getDate()}</span>
+                                {isToday && (
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      padding: "2px 6px",
+                                      borderRadius: 999,
+                                      background: "#dcfce7",
+                                      color: "#166534",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    今日
+                                  </span>
+                                )}
                               </div>
+
                               {hasRefund ? (
                                 <div
                                   style={{
@@ -686,18 +716,19 @@ export default function App() {
                                     <div key={entry.id} style={{ marginBottom: 4 }}>
                                       <div
                                         style={{
-                                          fontWeight: 700,
+                                          fontWeight: 600,
+                                          fontSize: 14,
                                           whiteSpace: "nowrap",
                                           overflow: "hidden",
                                           textOverflow: "ellipsis",
                                         }}
                                       >
-                                        {entry.store} {formatNumber(entry.storeSalary)}
+                                        {entry.store} {formatNumber(entry.sales)}
                                       </div>
                                     </div>
                                   ))}
                                   {calculatedEntries.length > 2 && (
-                                    <div style={{ color: "#64748b" }}>
+                                    <div style={{ color: "#64748b", fontSize: 13 }}>
                                       +{calculatedEntries.length - 2}筆
                                     </div>
                                   )}
@@ -719,7 +750,7 @@ export default function App() {
                                   textOverflow: "ellipsis",
                                 }}
                               >
-                                薪水 {formatNumber(salaryTotal)}
+                                💰 {formatNumber(salaryTotal)}
                               </div>
                             )}
                           </button>
@@ -1227,36 +1258,54 @@ export default function App() {
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, sales: e.target.value }))
                 }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    tailInputRef.current?.focus();
+                  }
+                }}
                 style={inputStyle}
               />
             </Field>
 
             <Field label="尾款">
               <input
+                ref={tailInputRef}
                 type="number"
                 inputMode="numeric"
                 value={form.tail}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, tail: e.target.value }))
                 }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    refundInputRef.current?.focus();
+                  }
+                }}
                 style={inputStyle}
               />
             </Field>
 
             <Field label="退款">
               <input
+                ref={refundInputRef}
                 type="number"
                 inputMode="numeric"
                 value={form.refund}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, refund: e.target.value }))
                 }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    productBonusInputRef.current?.focus();
+                  }
+                }}
                 style={{ ...inputStyle, color: "#dc2626" }}
               />
             </Field>
 
             <Field label="產品獎金">
               <input
+                ref={productBonusInputRef}
                 type="number"
                 inputMode="numeric"
                 value={form.productBonus}
