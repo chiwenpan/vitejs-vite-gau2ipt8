@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-v2";
+const STORAGE_KEY = "salary-calendar-app-v3";
 
 const defaultStores = [
   "AA",
@@ -142,7 +142,7 @@ function App() {
       setEntries(data.entries || []);
       setDeductions(data.deductions || []);
     } catch {
-      //
+      // ignore bad local data
     }
   }, []);
 
@@ -263,7 +263,9 @@ function App() {
     };
 
     setEntries((prev) => {
-      if (editId) return prev.map((item) => (item.id === editId ? payload : item));
+      if (editId) {
+        return prev.map((item) => (item.id === editId ? payload : item));
+      }
       return [...prev, payload].sort((a, b) => a.date.localeCompare(b.date));
     });
 
@@ -314,6 +316,7 @@ function App() {
         item.productBonus,
       ]),
     ];
+
     downloadCsv(
       `${year}-${String(month + 1).padStart(2, "0")}_每日業績明細.csv`,
       rows
@@ -434,6 +437,30 @@ function App() {
 
         {tab === "calendar" && (
           <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <div style={summaryCardStyle}>
+                <div style={summaryTitleStyle}>本月薪水</div>
+                <div style={{ ...summaryValueStyle, color: "#047857" }}>
+                  {formatNumber(actualSalary)}
+                </div>
+              </div>
+              <div style={summaryCardStyle}>
+                <div style={summaryTitleStyle}>距離理想薪資差距</div>
+                <div style={summaryValueStyle}>{formatNumber(gap)}</div>
+              </div>
+              <div style={summaryCardStyle}>
+                <div style={summaryTitleStyle}>尚需業績估算</div>
+                <div style={summaryValueStyle}>{formatNumber(neededSalesEstimate)}</div>
+              </div>
+            </div>
+
             <div style={panelStyle}>
               <div
                 style={{
@@ -481,7 +508,7 @@ function App() {
                         setSelectedDate(dateValue);
                       }}
                       style={{
-                        minHeight: 150,
+                        minHeight: 170,
                         borderRadius: 16,
                         border:
                           selectedDate === dateValue
@@ -517,17 +544,29 @@ function App() {
                         )}
                       </div>
 
-                      <div style={{ fontSize: 13, lineHeight: 1.45 }}>
-                        {dayEntries.slice(0, 3).map((entry) => (
-                          <div key={entry.id}>
-                            <span style={{ fontWeight: 700 }}>{entry.store}</span>{" "}
-                            {formatNumber(entry.sales)}
-                          </div>
-                        ))}
-                        {dayEntries.length > 3 && (
-                          <div style={{ color: "#64748b" }}>
-                            +{dayEntries.length - 3} 筆
-                          </div>
+                      <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+                        {dayEntries.length === 0 ? (
+                          <div style={{ color: "#94a3b8" }}>—</div>
+                        ) : (
+                          <>
+                            {dayEntries.slice(0, 2).map((entry) => (
+                              <div key={entry.id} style={{ marginBottom: 4 }}>
+                                <div style={{ fontWeight: 700 }}>{entry.store}</div>
+                                <div
+                                  style={{
+                                    color: entry.refund > 0 ? "#dc2626" : "#334155",
+                                  }}
+                                >
+                                  業績 {formatNumber(entry.sales)}
+                                </div>
+                              </div>
+                            ))}
+                            {dayEntries.length > 2 && (
+                              <div style={{ color: "#64748b" }}>
+                                +{dayEntries.length - 2} 筆
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -541,7 +580,7 @@ function App() {
                           fontSize: 13,
                         }}
                       >
-                        薪水 {formatNumber(salaryTotal)}
+                        當日薪水 {formatNumber(salaryTotal)}
                       </div>
                     </button>
                   );
