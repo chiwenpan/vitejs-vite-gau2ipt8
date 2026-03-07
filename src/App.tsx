@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-v7";
+const STORAGE_KEY = "salary-calendar-app-final-v8";
 
 const defaultStores = [
   "AA",
@@ -59,9 +59,13 @@ function toDateValue(date: Date) {
   return `${y}-${m}-${d}`;
 }
 
+function roundAmount(value: number) {
+  return Math.round(Number(value || 0));
+}
+
 function formatNumber(value: number) {
-  return Number(value || 0).toLocaleString("zh-TW", {
-    maximumFractionDigits: 2,
+  return roundAmount(value).toLocaleString("zh-TW", {
+    maximumFractionDigits: 0,
   });
 }
 
@@ -81,14 +85,30 @@ function calcEntry(entry: Entry) {
     Number(entry.tail || 0) -
     Number(entry.refund || 0);
 
-  const commission = getCommission(netSales);
-  const storeSalary = commission + Number(entry.productBonus || 0);
+  const commission = roundAmount(getCommission(netSales));
+  const storeSalary = roundAmount(commission + Number(entry.productBonus || 0));
 
   return {
-    netSales,
+    netSales: roundAmount(netSales),
     commission,
     storeSalary,
   };
+}
+
+function isValidStoreName(value: string) {
+  return /^(AA|AD|A\d+)$/.test(value);
+}
+
+function sanitizeStores(input: string[]) {
+  const cleaned = input
+    .map((s) => String(s || "").trim().toUpperCase())
+    .filter((s) => s && isValidStoreName(s));
+
+  const unique = Array.from(new Set(cleaned));
+
+  return unique.length > 0
+    ? unique.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    : defaultStores;
 }
 
 function downloadExcel(filename: string, rows: (string | number)[][]) {
@@ -170,12 +190,16 @@ export default function App() {
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
+
     try {
       const data = JSON.parse(raw);
-      setStores(data.stores || defaultStores);
+
+      const safeStores = sanitizeStores(data.stores || defaultStores);
+
+      setStores(safeStores);
       setSettings(data.settings || defaultSettings);
-      setEntries(data.entries || []);
-      setDeductions(data.deductions || []);
+      setEntries(Array.isArray(data.entries) ? data.entries : []);
+      setDeductions(Array.isArray(data.deductions) ? data.deductions : []);
     } catch {
       //
     }
@@ -270,23 +294,21 @@ export default function App() {
     return d;
   });
 
-  const preview = useMemo(() => {
-    return calcEntry({
-      id: "preview",
-      date: selectedDate,
-      store: form.store,
-      sales: Number(form.sales || 0),
-      tail: Number(form.tail || 0),
-      refund: Number(form.refund || 0),
-      productBonus: Number(form.productBonus || 0),
-    });
-  }, [form, selectedDate]);
+  const preview = calcEntry({
+    id: "preview",
+    date: selectedDate,
+    store: form.store,
+    sales: Number(form.sales || 0),
+    tail: Number(form.tail || 0),
+    refund: Number(form.refund || 0),
+    productBonus: Number(form.productBonus || 0),
+  });
 
   function openNewEntry(dateValue: string) {
     setSelectedDate(dateValue);
     setEditId(null);
     setForm({
-      store: stores[0] || "",
+      store: stores[0] || defaultStores[0],
       sales: "",
       tail: "",
       refund: "",
@@ -353,7 +375,10 @@ export default function App() {
 
   function addStore() {
     const value = newStore.trim().toUpperCase();
-    if (!value || stores.includes(value)) return;
+
+    if (!value) return;
+    if (!isValidStoreName(value)) return;
+    if (stores.includes(value)) return;
 
     setStores((prev) =>
       [...prev, value].sort((a, b) =>
@@ -362,6 +387,12 @@ export default function App() {
     );
 
     setNewStore("");
+  }
+
+  function removeStore(storeName: string) {
+    if (defaultStores.includes(storeName)) return;
+
+    setStores((prev) => prev.filter((item) => item !== storeName));
   }
 
   function exportAccountantReport() {
@@ -478,7 +509,9 @@ export default function App() {
 
             <div style={summaryCardStyle}>
               <div style={summaryTitleStyle}>尚需業績估算</div>
-              <div style={summaryValueStyle}>{formatNumber(neededSalesEstimate)}</div>
+              <div style={summaryValueStyle}>
+                {formatNumber(neededSalesEstimate)}
+              </div>
             </div>
 
             <div style={summaryCardStyle}>
@@ -565,7 +598,7 @@ export default function App() {
                       return (
                         <button
                           key={dateValue}
-                          onClick={() => openNewEntry(dateValue)}
+                          onClick={() => setSelectedDate(dateValue)}
                           style={{
                             minHeight: 132,
                             borderRadius: 16,
@@ -1053,13 +1086,11 @@ export default function App() {
                 </button>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4, 1fr)",
-                  gap: 8,
-                }}
-              >
+              <div style={{ color: "#64748b", fontSize: 13, marginBottom: 12 }}>
+                只允許 AA、AD、A數字 這種格式，避免再出現奇怪店名。
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
                 {stores.map((store) => (
                   <div
                     key={store}
@@ -1067,12 +1098,25 @@ export default function App() {
                       border: "1px solid #e5e7eb",
                       borderRadius: 12,
                       padding: 10,
-                      textAlign: "center",
                       background: "white",
-                      fontWeight: 700,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
                     }}
                   >
-                    {store}
+                    <div style={{ fontWeight: 700 }}>{store}</div>
+
+                    {defaultStores.includes(store) ? (
+                      <div style={{ color: "#94a3b8", fontSize: 12 }}>預設</div>
+                    ) : (
+                      <button
+                        onClick={() => removeStore(store)}
+                        style={{ ...buttonStyle, color: "#dc2626", padding: "6px 10px" }}
+                      >
+                        刪除
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
