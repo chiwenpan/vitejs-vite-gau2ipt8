@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-final-v9";
+const STORAGE_KEY = "salary-calendar-app-v10";
 
 const defaultStores = [
   "AA",
@@ -194,7 +194,6 @@ export default function App() {
 
     try {
       const data = JSON.parse(raw);
-
       setStores(sanitizeStores(data.stores || defaultStores));
       setSettings(data.settings || defaultSettings);
       setEntries(Array.isArray(data.entries) ? data.entries : []);
@@ -210,6 +209,8 @@ export default function App() {
       JSON.stringify({ stores, settings, entries, deductions })
     );
   }, [stores, settings, entries, deductions]);
+
+  const validStores = useMemo(() => sanitizeStores(stores), [stores]);
 
   const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
 
@@ -241,6 +242,11 @@ export default function App() {
   const selectedEntries = useMemo(() => {
     return (entriesByDate[selectedDate] || []).slice();
   }, [entriesByDate, selectedDate]);
+
+  const selectedDayTotalSalary = selectedEntries.reduce(
+    (sum, entry) => sum + Number(entry.storeSalary || 0),
+    0
+  );
 
   const salesTotal = monthCalculated.reduce((sum, item) => sum + item.sales, 0);
   const tailTotal = monthCalculated.reduce((sum, item) => sum + item.tail, 0);
@@ -293,21 +299,11 @@ export default function App() {
     return d;
   });
 
-  const preview = calcEntry({
-    id: "preview",
-    date: selectedDate,
-    store: form.store,
-    sales: Number(form.sales || 0),
-    tail: Number(form.tail || 0),
-    refund: Number(form.refund || 0),
-    productBonus: Number(form.productBonus || 0),
-  });
-
   function openNewEntry(dateValue: string) {
     setSelectedDate(dateValue);
     setEditId(null);
     setForm({
-      store: stores[0] || defaultStores[0],
+      store: validStores[0] || defaultStores[0],
       sales: "",
       tail: "",
       refund: "",
@@ -374,10 +370,9 @@ export default function App() {
 
   function addStore() {
     const value = newStore.trim().toUpperCase();
-
     if (!value) return;
     if (!isValidStoreName(value)) return;
-    if (stores.includes(value)) return;
+    if (validStores.includes(value)) return;
 
     setStores((prev) =>
       [...prev, value].sort((a, b) =>
@@ -412,6 +407,9 @@ export default function App() {
       rows
     );
   }
+
+  const calendarMinWidth =
+    zoom <= 0.7 ? 720 : zoom <= 0.8 ? 800 : zoom <= 0.9 ? 880 : zoom <= 1 ? 980 : 1120;
 
   return (
     <div
@@ -549,7 +547,7 @@ export default function App() {
             <>
               <button
                 onClick={() =>
-                  setZoom((z) => Math.max(0.85, Number((z - 0.1).toFixed(2))))
+                  setZoom((z) => Math.max(0.7, Number((z - 0.1).toFixed(2))))
                 }
                 style={buttonStyle}
               >
@@ -557,7 +555,7 @@ export default function App() {
               </button>
               <button
                 onClick={() =>
-                  setZoom((z) => Math.min(1.3, Number((z + 0.1).toFixed(2))))
+                  setZoom((z) => Math.min(1.2, Number((z + 0.1).toFixed(2))))
                 }
                 style={buttonStyle}
               >
@@ -570,20 +568,8 @@ export default function App() {
         {tab === "calendar" && (
           <>
             <div style={panelStyle}>
-              <div
-                style={{
-                  overflowX: "auto",
-                  WebkitOverflowScrolling: "touch",
-                }}
-              >
-                <div
-                  style={{
-                    minWidth: 980,
-                    transform: `scale(${zoom})`,
-                    transformOrigin: "top left",
-                    width: `${100 / zoom}%`,
-                  }}
-                >
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                <div style={{ minWidth: calendarMinWidth }}>
                   <div
                     style={{
                       display: "grid",
@@ -820,10 +806,7 @@ export default function App() {
                   fontWeight: 700,
                 }}
               >
-                當天總薪水：
-                {formatNumber(
-                  selectedEntries.reduce((sum, entry) => sum + entry.storeSalary, 0)
-                )}
+                當天總工資：{formatNumber(selectedDayTotalSalary)}
               </div>
             </div>
           </>
@@ -1134,7 +1117,7 @@ export default function App() {
               </div>
 
               <div style={{ display: "grid", gap: 8 }}>
-                {stores.map((store) => (
+                {validStores.map((store) => (
                   <div
                     key={store}
                     style={{
@@ -1179,6 +1162,10 @@ export default function App() {
               {editId ? "編輯資料" : "新增資料"}｜{selectedDate}
             </h2>
 
+            <div style={{ color: "#64748b", marginBottom: 12 }}>
+              儲存後自動計算薪資
+            </div>
+
             <Field label="店家">
               <select
                 value={form.store}
@@ -1187,7 +1174,7 @@ export default function App() {
                 }
                 style={inputStyle}
               >
-                {stores.map((store) => (
+                {validStores.map((store) => (
                   <option key={store} value={store}>
                     {store}
                   </option>
@@ -1245,23 +1232,6 @@ export default function App() {
                 style={inputStyle}
               />
             </Field>
-
-            <div
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 14,
-                padding: 12,
-                background: "#f8fafc",
-                marginTop: 12,
-                lineHeight: 1.8,
-              }}
-            >
-              <div>實算業績：{formatNumber(preview.netSales)}</div>
-              <div>業績獎金：{formatNumber(preview.commission)}</div>
-              <div style={{ fontWeight: 700, color: "#047857" }}>
-                店家薪水：{formatNumber(preview.storeSalary)}
-              </div>
-            </div>
 
             <div
               style={{
