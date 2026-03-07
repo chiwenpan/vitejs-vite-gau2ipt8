@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-stable-v11";
+const STORAGE_KEY = "salary-calendar-app-v12";
 
 const defaultStores = [
   "AA",
@@ -621,9 +621,8 @@ export default function App() {
                       );
 
                       return (
-                        <button
+                        <div
                           key={dateValue}
-                          onClick={() => setSelectedDate(dateValue)}
                           style={{
                             minHeight: 132,
                             borderRadius: 16,
@@ -633,88 +632,118 @@ export default function App() {
                                 : "1px solid #dbe4ee",
                             background: "white",
                             padding: 10,
-                            textAlign: "left",
                             opacity: inMonth ? 1 : 0.35,
-                            cursor: "pointer",
                             overflow: "hidden",
+                            position: "relative",
                           }}
                         >
-                          <div
+                          <button
+                            onClick={() => setSelectedDate(dateValue)}
                             style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              marginBottom: 8,
-                              alignItems: "center",
+                              all: "unset",
+                              display: "block",
+                              width: "100%",
+                              cursor: "pointer",
                             }}
                           >
-                            <div style={{ fontWeight: 700, fontSize: 16 }}>
-                              {date.getDate()}
-                            </div>
-                            {hasRefund ? (
-                              <div
-                                style={{
-                                  color: "#dc2626",
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                }}
-                              >
-                                退款
-                              </div>
-                            ) : (
-                              <div />
-                            )}
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize: 14,
-                              lineHeight: 1.45,
-                              minHeight: 52,
-                            }}
-                          >
-                            {calculatedEntries.length > 0 && (
-                              <>
-                                {calculatedEntries.slice(0, 2).map((entry) => (
-                                  <div key={entry.id} style={{ marginBottom: 4 }}>
-                                    <div
-                                      style={{
-                                        fontWeight: 700,
-                                        whiteSpace: "nowrap",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                      }}
-                                    >
-                                      {entry.store} {formatNumber(entry.storeSalary)}
-                                    </div>
-                                  </div>
-                                ))}
-                                {calculatedEntries.length > 2 && (
-                                  <div style={{ color: "#64748b" }}>
-                                    +{calculatedEntries.length - 2}筆
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </div>
-
-                          {calculatedEntries.length > 0 && (
                             <div
                               style={{
-                                marginTop: 8,
-                                paddingTop: 8,
-                                borderTop: "1px solid #e5e7eb",
-                                fontWeight: 700,
-                                color: "#047857",
-                                fontSize: 14,
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                marginBottom: 8,
+                                alignItems: "center",
                               }}
                             >
-                              薪水 {formatNumber(salaryTotal)}
+                              <div style={{ fontWeight: 700, fontSize: 16 }}>
+                                {date.getDate()}
+                              </div>
+                              {hasRefund ? (
+                                <div
+                                  style={{
+                                    color: "#dc2626",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    marginRight: 28,
+                                  }}
+                                >
+                                  退款
+                                </div>
+                              ) : (
+                                <div />
+                              )}
                             </div>
-                          )}
-                        </button>
+
+                            <div
+                              style={{
+                                fontSize: 14,
+                                lineHeight: 1.45,
+                                minHeight: 52,
+                              }}
+                            >
+                              {calculatedEntries.length > 0 && (
+                                <>
+                                  {calculatedEntries.slice(0, 2).map((entry) => (
+                                    <div key={entry.id} style={{ marginBottom: 4 }}>
+                                      <div
+                                        style={{
+                                          fontWeight: 700,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                        }}
+                                      >
+                                        {entry.store} {formatNumber(entry.storeSalary)}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {calculatedEntries.length > 2 && (
+                                    <div style={{ color: "#64748b" }}>
+                                      +{calculatedEntries.length - 2}筆
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+
+                            {calculatedEntries.length > 0 && (
+                              <div
+                                style={{
+                                  marginTop: 8,
+                                  paddingTop: 8,
+                                  borderTop: "1px solid #e5e7eb",
+                                  fontWeight: 700,
+                                  color: "#047857",
+                                  fontSize: 14,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                薪水 {formatNumber(salaryTotal)}
+                              </div>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => openNewEntry(dateValue)}
+                            style={{
+                              position: "absolute",
+                              top: 6,
+                              right: 6,
+                              width: 24,
+                              height: 24,
+                              borderRadius: 999,
+                              border: "1px solid #cbd5e1",
+                              background: "white",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              lineHeight: 1,
+                            }}
+                            aria-label={`新增 ${dateValue} 資料`}
+                          >
+                            +
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
