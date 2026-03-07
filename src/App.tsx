@@ -1,1335 +1,853 @@
-import React, { useEffect, useMemo, useState } from "react";
-
-type Entry = {
-  id: string;
-  date: string;
-  store: string;
-  sales: number;
-  tail: number;
-  refund: number;
-  productBonus: number;
-};
-
-type Deduction = {
-  id: string;
-  amount: number;
-  note: string;
-};
-
-type Settings = {
-  idealSalary: number;
-  baseSalary: number;
-  mealTransport: number;
-  travelAllowance: number;
-  fixedDeduction: number;
-};
-
-const STORAGE_KEY = "salary-calendar-app-final";
-
-const defaultStores = [
-  "AA",
-  "AD",
-  "A1",
-  "A2",
-  "A3",
-  "A5",
-  "A6",
-  "A7",
-  "A8",
-  "A9",
-  "A10",
-  "A11",
-  "A12",
-  "A13",
-  "A15",
-];
-
-const defaultSettings: Settings = {
-  idealSalary: 150000,
-  baseSalary: 25000,
-  mealTransport: 2000,
-  travelAllowance: 3000,
-  fixedDeduction: 35000,
-};
-
-function toDateValue(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function formatNumber(value: number) {
-  return Number(value || 0).toLocaleString("zh-TW", {
-    maximumFractionDigits: 2,
-  });
-}
-
-function getCommission(netSales: number) {
-  if (netSales >= 0) {
-    if (netSales <= 99999) return netSales * 0.02;
-    if (netSales <= 199999) return netSales * 0.03;
-    if (netSales <= 299999) return netSales * 0.045;
-    return netSales * 0.05;
-  }
-  return netSales * 0.02;
-}
-
-function calcEntry(entry: Entry) {
-  const netSales =
-    Number(entry.sales || 0) +
-    Number(entry.tail || 0) -
-    Number(entry.refund || 0);
-
-  const commission = getCommission(netSales);
-  const storeSalary = commission + Number(entry.productBonus || 0);
-
-  return {
-    netSales,
-    commission,
-    storeSalary,
-  };
-}
-
-function downloadExcel(filename: string, rows: (string | number)[][]) {
-  const tableRows = rows
-    .map(
-      (row) =>
-        "<tr>" +
-        row
-          .map(
-            (cell) =>
-              `<td style="border:1px solid #d1d5db;padding:8px;">${String(
-                cell ?? ""
-              )}</td>`
-          )
-          .join("") +
-        "</tr>"
-    )
-    .join("");
-
-  const html = `
-    <html>
-      <head>
-        <meta charset="UTF-8" />
-      </head>
-      <body>
-        <table>
-          ${tableRows}
-        </table>
-      </body>
-    </html>
-  `;
-
-  const blob = new Blob([html], {
-    type: "application/vnd.ms-excel;charset=utf-8;",
-  });
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function App() {
-  const today = new Date();
-
-  const [tab, setTab] = useState<
-    "calendar" | "summary" | "deductions" | "settings"
-  >("calendar");
-
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
-
-  const [stores, setStores] = useState<string[]>(defaultStores);
-  const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [deductions, setDeductions] = useState<Deduction[]>([]);
-
-  const [selectedDate, setSelectedDate] = useState(toDateValue(today));
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-
-  const [form, setForm] = useState({
-    store: defaultStores[0],
-    sales: "",
-    tail: "",
-    refund: "",
-    productBonus: "",
-  });
-
-  const [deductionForm, setDeductionForm] = useState({
-    amount: "",
-    note: "",
-  });
-
-  const [newStore, setNewStore] = useState("");
-
-  useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-
-    try {
-      const data = JSON.parse(raw);
-      setStores(data.stores || defaultStores);
-      setSettings(data.settings || defaultSettings);
-      setEntries(data.entries || []);
-      setDeductions(data.deductions || []);
-    } catch {
-      //
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>薪資月曆</title>
+  <style>
+    :root{
+      --primary:#167c72;
+      --primary-light:#e8f5f3;
+      --danger:#d93025;
+      --text:#1f2937;
+      --sub:#6b7280;
+      --bg:#f4f6f8;
+      --card:#ffffff;
+      --line:#d8dee4;
+      --shadow:0 4px 14px rgba(0,0,0,.06);
+      --radius:18px;
     }
-  }, []);
 
-  useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ stores, settings, entries, deductions })
-    );
-  }, [stores, settings, entries, deductions]);
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;
+      padding:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif;
+    }
 
-  const monthEntries = useMemo(() => {
-    const key = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return entries.filter((item) => item.date.startsWith(key));
-  }, [entries, year, month]);
+    body{
+      max-width:480px;
+      margin:0 auto;
+      min-height:100vh;
+      padding:14px 14px 24px;
+    }
 
-  const monthCalculated = useMemo(() => {
-    return monthEntries.map((entry) => ({
-      ...entry,
-      ...calcEntry(entry),
-    }));
-  }, [monthEntries]);
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:10px;
+    }
 
-  const salesTotal = monthCalculated.reduce((sum, item) => sum + item.sales, 0);
-  const tailTotal = monthCalculated.reduce((sum, item) => sum + item.tail, 0);
-  const refundTotal = monthCalculated.reduce(
-    (sum, item) => sum + item.refund,
-    0
-  );
-  const netSalesTotal = monthCalculated.reduce(
-    (sum, item) => sum + item.netSales,
-    0
-  );
-  const commissionTotal = monthCalculated.reduce(
-    (sum, item) => sum + item.commission,
-    0
-  );
-  const productBonusTotal = monthCalculated.reduce(
-    (sum, item) => sum + item.productBonus,
-    0
-  );
+    .month-title{
+      font-size:28px;
+      font-weight:800;
+      letter-spacing:.5px;
+    }
 
-  const fixedIncome =
-    settings.baseSalary +
-    settings.mealTransport +
-    settings.travelAllowance;
+    .month-nav{
+      display:flex;
+      gap:8px;
+    }
 
-  const otherDeductionTotal = deductions.reduce(
-    (sum, item) => sum + item.amount,
-    0
-  );
+    .icon-btn{
+      border:none;
+      background:var(--card);
+      border-radius:12px;
+      padding:10px 12px;
+      box-shadow:var(--shadow);
+      font-size:16px;
+      cursor:pointer;
+    }
 
-  const actualSalary =
-    fixedIncome +
-    commissionTotal +
-    productBonusTotal -
-    settings.fixedDeduction -
-    otherDeductionTotal;
+    .summary-cards{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:12px;
+      margin-bottom:14px;
+    }
 
-  const gap = settings.idealSalary - actualSalary;
-  const progress =
-    settings.idealSalary > 0 ? actualSalary / settings.idealSalary : 0;
-  const neededSalesEstimate = gap <= 0 ? 0 : gap / 0.03;
+    .card{
+      background:var(--card);
+      border-radius:22px;
+      box-shadow:var(--shadow);
+      padding:18px 16px;
+      text-align:center;
+    }
 
-  const groupedByDate = useMemo(() => {
-    const map: Record<string, Entry[]> = {};
+    .card .label{
+      font-size:14px;
+      color:var(--sub);
+      margin-bottom:8px;
+    }
 
-    monthEntries.forEach((entry) => {
-      if (!map[entry.date]) map[entry.date] = [];
-      map[entry.date].push(entry);
-    });
+    .card .value{
+      font-size:26px;
+      font-weight:900;
+      line-height:1.1;
+    }
 
-    return map;
-  }, [monthEntries]);
+    .green{color:var(--primary)}
+    .red{color:var(--danger)}
+    .dark{color:#0f172a}
 
-  const selectedEntries = (groupedByDate[selectedDate] || []).map((entry) => ({
-    ...entry,
-    ...calcEntry(entry),
-  }));
+    .tabs{
+      display:flex;
+      gap:8px;
+      margin:12px 0 14px;
+      overflow:auto;
+      -webkit-overflow-scrolling:touch;
+      padding-bottom:2px;
+    }
 
-  const monthStart = new Date(year, month, 1);
-  const startGrid = new Date(monthStart);
-  startGrid.setDate(monthStart.getDate() - monthStart.getDay());
+    .tab-btn{
+      flex:0 0 auto;
+      border:1px solid #d1d5db;
+      background:#fff;
+      color:#111827;
+      padding:12px 16px;
+      border-radius:16px;
+      font-size:14px;
+      font-weight:800;
+      cursor:pointer;
+      min-width:74px;
+    }
 
-  const days = Array.from({ length: 42 }, (_, index) => {
-    const d = new Date(startGrid);
-    d.setDate(startGrid.getDate() + index);
-    return d;
-  });
+    .tab-btn.active{
+      background:var(--primary);
+      color:#fff;
+      border-color:var(--primary);
+    }
 
-  const preview = useMemo(() => {
-    return calcEntry({
-      id: "preview",
-      date: selectedDate,
-      store: form.store,
-      sales: Number(form.sales || 0),
-      tail: Number(form.tail || 0),
-      refund: Number(form.refund || 0),
-      productBonus: Number(form.productBonus || 0),
-    });
-  }, [form, selectedDate]);
+    .panel{display:none}
+    .panel.active{display:block}
 
-  function openNewEntry(dateValue: string) {
-    setSelectedDate(dateValue);
-    setEditId(null);
-    setForm({
-      store: stores[0] || "",
-      sales: "",
-      tail: "",
-      refund: "",
-      productBonus: "",
-    });
-    setShowForm(true);
-  }
+    .weekday-row{
+      display:grid;
+      grid-template-columns:repeat(7,1fr);
+      gap:8px;
+      margin-bottom:8px;
+      padding:0 2px;
+    }
 
-  function openEdit(entry: Entry) {
-    setSelectedDate(entry.date);
-    setEditId(entry.id);
-    setForm({
-      store: entry.store,
-      sales: String(entry.sales || 0),
-      tail: String(entry.tail || 0),
-      refund: String(entry.refund || 0),
-      productBonus: String(entry.productBonus || 0),
-    });
-    setShowForm(true);
-  }
+    .weekday{
+      text-align:center;
+      font-size:15px;
+      font-weight:800;
+      color:#64748b;
+      padding:4px 0;
+    }
 
-  function saveEntry() {
-    const payload: Entry = {
-      id: editId || crypto.randomUUID(),
-      date: selectedDate,
-      store: form.store,
-      sales: Number(form.sales || 0),
-      tail: Number(form.tail || 0),
-      refund: Number(form.refund || 0),
-      productBonus: Number(form.productBonus || 0),
-    };
+    .calendar-grid{
+      display:grid;
+      grid-template-columns:repeat(7,1fr);
+      gap:8px;
+      align-items:stretch;
+    }
 
-    setEntries((prev) => {
-      if (editId) {
-        return prev.map((item) => (item.id === editId ? payload : item));
+    .day-cell{
+      background:#fff;
+      border:1px solid var(--line);
+      border-radius:18px;
+      min-height:118px;
+      padding:10px 8px;
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-start;
+      box-shadow:0 2px 8px rgba(0,0,0,.03);
+      cursor:pointer;
+      overflow:hidden;
+    }
+
+    .day-cell.other-month{
+      opacity:.28;
+      background:#f8fafc;
+    }
+
+    .day-cell.today{
+      border:2px solid var(--primary);
+      background:#fcfffe;
+    }
+
+    .date-num{
+      font-size:22px;
+      font-weight:900;
+      margin-bottom:6px;
+      color:#111827;
+      line-height:1;
+    }
+
+    .divider{
+      height:1px;
+      background:#e5e7eb;
+      margin:4px 0 6px;
+      flex:0 0 auto;
+    }
+
+    .entry-line{
+      font-size:12px;
+      line-height:1.35;
+      margin-bottom:3px;
+      word-break:break-word;
+    }
+
+    .entry-schedule{
+      color:#334155;
+      font-weight:700;
+    }
+
+    .entry-performance{
+      color:#0f766e;
+      font-weight:800;
+    }
+
+    .entry-salary{
+      color:#1d4ed8;
+      font-weight:800;
+    }
+
+    .entry-empty{
+      color:#9ca3af;
+      font-size:12px;
+    }
+
+    .section-card{
+      background:#fff;
+      border-radius:20px;
+      box-shadow:var(--shadow);
+      padding:16px;
+      margin-bottom:14px;
+    }
+
+    .section-title{
+      font-size:18px;
+      font-weight:900;
+      margin-bottom:14px;
+    }
+
+    .stat-list{
+      display:grid;
+      gap:12px;
+    }
+
+    .stat-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:12px 0;
+      border-bottom:1px solid #eef2f7;
+      gap:10px;
+    }
+
+    .stat-row:last-child{border-bottom:none}
+
+    .stat-row .left{
+      color:#475569;
+      font-weight:700;
+    }
+
+    .stat-row .right{
+      font-weight:900;
+      font-size:18px;
+      text-align:right;
+    }
+
+    .form-group{
+      margin-bottom:14px;
+    }
+
+    .form-group label{
+      display:block;
+      font-size:14px;
+      font-weight:800;
+      margin-bottom:6px;
+      color:#334155;
+    }
+
+    input, select, textarea{
+      width:100%;
+      border:1px solid #d1d5db;
+      border-radius:14px;
+      padding:12px 14px;
+      font-size:16px;
+      background:#fff;
+      outline:none;
+    }
+
+    textarea{
+      min-height:90px;
+      resize:vertical;
+    }
+
+    .btn{
+      border:none;
+      background:var(--primary);
+      color:#fff;
+      border-radius:14px;
+      padding:13px 16px;
+      width:100%;
+      font-size:16px;
+      font-weight:900;
+      cursor:pointer;
+    }
+
+    .btn.secondary{
+      background:#fff;
+      color:#111827;
+      border:1px solid #d1d5db;
+    }
+
+    .btn-row{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      margin-top:10px;
+    }
+
+    .modal{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.45);
+      display:none;
+      align-items:flex-end;
+      justify-content:center;
+      z-index:999;
+      padding:12px;
+    }
+
+    .modal.show{display:flex}
+
+    .modal-card{
+      width:100%;
+      max-width:480px;
+      background:#fff;
+      border-radius:24px 24px 18px 18px;
+      padding:18px 16px 20px;
+      box-shadow:0 10px 30px rgba(0,0,0,.18);
+      max-height:88vh;
+      overflow:auto;
+    }
+
+    .modal-title{
+      font-size:20px;
+      font-weight:900;
+      margin-bottom:14px;
+    }
+
+    .helper{
+      font-size:13px;
+      color:#64748b;
+      margin-top:6px;
+    }
+
+    .small-note{
+      font-size:12px;
+      color:#64748b;
+      line-height:1.5;
+    }
+
+    @media (max-width:400px){
+      .day-cell{
+        min-height:108px;
+        padding:8px 6px;
+        border-radius:16px;
       }
-      return [...prev, payload].sort((a, b) => a.date.localeCompare(b.date));
-    });
+      .date-num{
+        font-size:20px;
+      }
+      .entry-line{
+        font-size:11px;
+      }
+      .month-title{
+        font-size:24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="month-title" id="monthTitle">2026 / 03</div>
+    <div class="month-nav">
+      <button class="icon-btn" id="prevMonthBtn">‹</button>
+      <button class="icon-btn" id="todayBtn">今</button>
+      <button class="icon-btn" id="nextMonthBtn">›</button>
+    </div>
+  </div>
 
-    setShowForm(false);
-    setEditId(null);
-  }
+  <div class="summary-cards">
+    <div class="card">
+      <div class="label">本月薪水</div>
+      <div class="value green" id="totalSalaryCard">$0</div>
+    </div>
+    <div class="card">
+      <div class="label">距離理想薪資差距</div>
+      <div class="value red" id="salaryGapCard">$0</div>
+    </div>
+    <div class="card">
+      <div class="label">本月總業績</div>
+      <div class="value dark" id="totalPerformanceCard">$0</div>
+    </div>
+    <div class="card">
+      <div class="label">完成率</div>
+      <div class="value dark" id="completionRateCard">0%</div>
+    </div>
+  </div>
 
-  function deleteEntry(id: string) {
-    setEntries((prev) => prev.filter((item) => item.id !== id));
-    setShowForm(false);
-    setEditId(null);
-  }
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="calendarPanel">月曆</button>
+    <button class="tab-btn" data-tab="statsPanel">月統計</button>
+    <button class="tab-btn" data-tab="deductPanel">扣薪</button>
+    <button class="tab-btn" data-tab="settingsPanel">設定</button>
+  </div>
 
-  function addDeduction() {
-    if (!deductionForm.amount) return;
+  <div class="panel active" id="calendarPanel">
+    <div class="weekday-row">
+      <div class="weekday">日</div>
+      <div class="weekday">一</div>
+      <div class="weekday">二</div>
+      <div class="weekday">三</div>
+      <div class="weekday">四</div>
+      <div class="weekday">五</div>
+      <div class="weekday">六</div>
+    </div>
+    <div class="calendar-grid" id="calendarGrid"></div>
+  </div>
 
-    setDeductions((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        amount: Number(deductionForm.amount),
-        note: deductionForm.note,
-      },
-    ]);
-
-    setDeductionForm({ amount: "", note: "" });
-  }
-
-  function addStore() {
-    const value = newStore.trim().toUpperCase();
-    if (!value || stores.includes(value)) return;
-
-    setStores((prev) =>
-      [...prev, value].sort((a, b) =>
-        a.localeCompare(b, undefined, { numeric: true })
-      )
-    );
-
-    setNewStore("");
-  }
-
-  function exportAccountantReport() {
-    const rows: (string | number)[][] = [
-      ["日期", "店家", "業績", "尾款", "退款", "實算業績", "產品獎金"],
-      ...monthCalculated.map((item) => [
-        item.date,
-        item.store,
-        item.sales,
-        item.tail,
-        item.refund,
-        item.netSales,
-        item.productBonus,
-      ]),
-    ];
-
-    downloadExcel(
-      `${year}-${String(month + 1).padStart(2, "0")}_每日業績明細.xls`,
-      rows
-    );
-  }
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f5f7fb",
-        fontFamily:
-          '"Noto Sans TC","Microsoft JhengHei","PingFang TC","Heiti TC",sans-serif',
-        color: "#111827",
-      }}
-    >
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            marginBottom: 16,
-          }}
-        >
-          <div>
-            <h1 style={{ margin: 0, fontSize: 28 }}>私人薪資月曆 App</h1>
-            <div style={{ color: "#64748b", marginTop: 6 }}>
-              逐店分開計算，最後再加總每日薪水。
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <button
-              onClick={() => {
-                const d = new Date(year, month - 1, 1);
-                setYear(d.getFullYear());
-                setMonth(d.getMonth());
-              }}
-              style={buttonStyle}
-            >
-              上個月
-            </button>
-
-            <div style={{ minWidth: 120, textAlign: "center", fontWeight: 700 }}>
-              {year} / {month + 1} 月
-            </div>
-
-            <button
-              onClick={() => {
-                const d = new Date(year, month + 1, 1);
-                setYear(d.getFullYear());
-                setMonth(d.getMonth());
-              }}
-              style={buttonStyle}
-            >
-              下個月
-            </button>
-
-            <button
-              onClick={() => openNewEntry(selectedDate)}
-              style={{
-                ...buttonStyle,
-                background: "#0f766e",
-                color: "white",
-                border: "none",
-              }}
-            >
-              新增資料
-            </button>
-          </div>
+  <div class="panel" id="statsPanel">
+    <div class="section-card">
+      <div class="section-title">本月統計</div>
+      <div class="stat-list">
+        <div class="stat-row">
+          <div class="left">本月總業績</div>
+          <div class="right" id="statsPerformance">$0</div>
         </div>
-
-        {tab === "calendar" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
-            <div style={summaryCardStyle}>
-              <div style={summaryTitleStyle}>本月薪水</div>
-              <div style={{ ...summaryValueStyle, color: "#047857" }}>
-                {formatNumber(actualSalary)}
-              </div>
-            </div>
-
-            <div style={summaryCardStyle}>
-              <div style={summaryTitleStyle}>距離理想薪資差距</div>
-              <div
-                style={{
-                  ...summaryValueStyle,
-                  color: gap > 0 ? "#dc2626" : "#047857",
-                }}
-              >
-                {formatNumber(gap)}
-              </div>
-            </div>
-
-            <div style={summaryCardStyle}>
-              <div style={summaryTitleStyle}>尚需業績估算</div>
-              <div style={summaryValueStyle}>{formatNumber(neededSalesEstimate)}</div>
-            </div>
-
-            <div style={summaryCardStyle}>
-              <div style={summaryTitleStyle}>達成率</div>
-              <div style={summaryValueStyle}>{(progress * 100).toFixed(1)}%</div>
-            </div>
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-          <button
-            onClick={() => setTab("calendar")}
-            style={tab === "calendar" ? activeTabStyle : tabStyle}
-          >
-            月曆
-          </button>
-          <button
-            onClick={() => setTab("summary")}
-            style={tab === "summary" ? activeTabStyle : tabStyle}
-          >
-            月統計
-          </button>
-          <button
-            onClick={() => setTab("deductions")}
-            style={tab === "deductions" ? activeTabStyle : tabStyle}
-          >
-            扣薪
-          </button>
-          <button
-            onClick={() => setTab("settings")}
-            style={tab === "settings" ? activeTabStyle : tabStyle}
-          >
-            設定
-          </button>
+        <div class="stat-row">
+          <div class="left">本月總薪水</div>
+          <div class="right" id="statsSalary">$0</div>
         </div>
+        <div class="stat-row">
+          <div class="left">本月扣薪</div>
+          <div class="right red" id="statsDeduction">$0</div>
+        </div>
+        <div class="stat-row">
+          <div class="left">平均每日業績</div>
+          <div class="right" id="statsAvgPerformance">$0</div>
+        </div>
+        <div class="stat-row">
+          <div class="left">平均每日薪水</div>
+          <div class="right" id="statsAvgSalary">$0</div>
+        </div>
+        <div class="stat-row">
+          <div class="left">目標達成率</div>
+          <div class="right" id="statsRate">0%</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        {tab === "calendar" && (
-          <>
-            <div style={panelStyle}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gap: 8,
-                  marginBottom: 8,
-                }}
-              >
-                {["日", "一", "二", "三", "四", "五", "六"].map((name) => (
-                  <div
-                    key={name}
-                    style={{
-                      textAlign: "center",
-                      fontWeight: 700,
-                      color: "#64748b",
-                    }}
-                  >
-                    {name}
-                  </div>
-                ))}
-              </div>
+  <div class="panel" id="deductPanel">
+    <div class="section-card">
+      <div class="section-title">扣薪設定</div>
+      <div class="form-group">
+        <label for="monthlyDeductionInput">本月固定扣薪</label>
+        <input type="number" id="monthlyDeductionInput" placeholder="例如 5000">
+        <div class="helper">這裡是整個月固定要扣掉的金額。</div>
+      </div>
+      <button class="btn" id="saveDeductionBtn">儲存扣薪</button>
+    </div>
+  </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gap: 8,
-                }}
-              >
-                {days.map((date) => {
-                  const dateValue = toDateValue(date);
-                  const dayEntries = groupedByDate[dateValue] || [];
-                  const salaryTotal = dayEntries.reduce(
-                    (sum, entry) => sum + calcEntry(entry).storeSalary,
-                    0
-                  );
-                  const inMonth = date.getMonth() === month;
-                  const hasRefund = dayEntries.some((item) => item.refund > 0);
+  <div class="panel" id="settingsPanel">
+    <div class="section-card">
+      <div class="section-title">基本設定</div>
+      <div class="form-group">
+        <label for="targetSalaryInput">理想月薪目標</label>
+        <input type="number" id="targetSalaryInput" placeholder="例如 150000">
+      </div>
+      <button class="btn" id="saveSettingsBtn">儲存設定</button>
+      <div class="helper">完成率會依照「本月薪水 ÷ 理想月薪目標」計算。</div>
+    </div>
+  </div>
 
-                  return (
-                    <button
-                      key={dateValue}
-                      onClick={() => {
-                        setSelectedDate(dateValue);
-                      }}
-                      style={{
-                        minHeight: 170,
-                        borderRadius: 16,
-                        border:
-                          selectedDate === dateValue
-                            ? "2px solid #0f766e"
-                            : "1px solid #dbe4ee",
-                        background: "white",
-                        padding: 10,
-                        textAlign: "left",
-                        opacity: inMonth ? 1 : 0.45,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          marginBottom: 8,
-                        }}
-                      >
-                        <div style={{ fontWeight: 700 }}>{date.getDate()}</div>
-                        {hasRefund ? (
-                          <div
-                            style={{
-                              color: "#dc2626",
-                              fontSize: 12,
-                              fontWeight: 700,
-                            }}
-                          >
-                            退款
-                          </div>
-                        ) : (
-                          <div />
-                        )}
-                      </div>
+  <div class="modal" id="editModal">
+    <div class="modal-card">
+      <div class="modal-title" id="modalTitle">編輯日期</div>
 
-                      <div
-                        style={{
-                          fontSize: 13,
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        {dayEntries.length === 0 ? (
-                          <div style={{ color: "#94a3b8" }}>—</div>
-                        ) : (
-                          <>
-                            {dayEntries.slice(0, 2).map((entry) => (
-                              <div key={entry.id} style={{ marginBottom: 4 }}>
-                                <div style={{ fontWeight: 700 }}>{entry.store}</div>
-                                <div
-                                  style={{
-                                    color: entry.refund > 0 ? "#dc2626" : "#334155",
-                                  }}
-                                >
-                                  業績 {formatNumber(entry.sales)}
-                                </div>
-                              </div>
-                            ))}
-                            {dayEntries.length > 2 && (
-                              <div style={{ color: "#64748b" }}>
-                                +{dayEntries.length - 2} 筆
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: 8,
-                          paddingTop: 8,
-                          borderTop: "1px solid #e5e7eb",
-                          fontWeight: 700,
-                          color: "#047857",
-                          fontSize: 13,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        薪水 {formatNumber(salaryTotal)}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div style={{ ...panelStyle, marginTop: 16 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 12,
-                  flexWrap: "wrap",
-                  gap: 8,
-                }}
-              >
-                <h2 style={{ margin: 0, fontSize: 22 }}>{selectedDate} 明細</h2>
-                <button
-                  onClick={() => openNewEntry(selectedDate)}
-                  style={{
-                    ...buttonStyle,
-                    background: "#0f766e",
-                    color: "white",
-                    border: "none",
-                  }}
-                >
-                  這一天新增資料
-                </button>
-              </div>
-
-              {selectedEntries.length === 0 ? (
-                <div style={{ color: "#64748b" }}>這一天還沒有資料。</div>
-              ) : (
-                <div style={{ display: "grid", gap: 12 }}>
-                  {selectedEntries.map((entry) => (
-                    <div
-                      key={entry.id}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 16,
-                        padding: 14,
-                        background: "white",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <div style={{ lineHeight: 1.7 }}>
-                          <div style={{ fontWeight: 700, fontSize: 18 }}>
-                            {entry.store}
-                          </div>
-                          <div>業績：{formatNumber(entry.sales)}</div>
-                          <div>尾款：{formatNumber(entry.tail)}</div>
-                          <div
-                            style={{
-                              color: entry.refund > 0 ? "#dc2626" : undefined,
-                            }}
-                          >
-                            退款：{formatNumber(entry.refund)}
-                          </div>
-                          <div>產品獎金：{formatNumber(entry.productBonus)}</div>
-                          <div>業績獎金：{formatNumber(entry.commission)}</div>
-                          <div style={{ fontWeight: 700, color: "#047857" }}>
-                            店家薪水：{formatNumber(entry.storeSalary)}
-                          </div>
-                        </div>
-
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => openEdit(entry)} style={buttonStyle}>
-                            編輯
-                          </button>
-                          <button
-                            onClick={() => deleteEntry(entry.id)}
-                            style={{ ...buttonStyle, color: "#dc2626" }}
-                          >
-                            刪除
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div
-                style={{
-                  marginTop: 14,
-                  textAlign: "right",
-                  fontSize: 18,
-                  fontWeight: 700,
-                }}
-              >
-                當天總薪水：
-                {formatNumber(
-                  selectedEntries.reduce((sum, entry) => sum + entry.storeSalary, 0)
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        {tab === "summary" && (
-          <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 12,
-              }}
-            >
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>當月業績總和</div>
-                <div style={summaryValueStyle}>{formatNumber(salesTotal)}</div>
-              </div>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>當月尾款總和</div>
-                <div style={summaryValueStyle}>{formatNumber(tailTotal)}</div>
-              </div>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>當月退款總和</div>
-                <div style={{ ...summaryValueStyle, color: "#dc2626" }}>
-                  {formatNumber(refundTotal)}
-                </div>
-              </div>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>當月實算業績</div>
-                <div style={summaryValueStyle}>{formatNumber(netSalesTotal)}</div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-                gap: 16,
-                marginTop: 16,
-              }}
-            >
-              <div style={panelStyle}>
-                <h2 style={{ marginTop: 0 }}>薪資統計</h2>
-                <Row label="業績獎金總和" value={commissionTotal} />
-                <Row label="產品獎金總和" value={productBonusTotal} />
-                <Row label="底薪" value={settings.baseSalary} />
-                <Row label="伙食+車資" value={settings.mealTransport} />
-                <Row label="跑店津貼" value={settings.travelAllowance} />
-                <Row label="固定收入合計" value={fixedIncome} strong />
-                <Row label="固定扣薪" value={settings.fixedDeduction} />
-                <Row label="其他扣薪" value={otherDeductionTotal} />
-                <div style={{ borderTop: "1px solid #e5e7eb", marginTop: 12, paddingTop: 12 }}>
-                  <Row
-                    label="目前實際薪水"
-                    value={actualSalary}
-                    strong
-                    color="#047857"
-                  />
-                </div>
-              </div>
-
-              <div style={panelStyle}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <h2 style={{ margin: 0 }}>目標追蹤</h2>
-                  <button
-                    onClick={exportAccountantReport}
-                    style={{
-                      ...buttonStyle,
-                      background: "#0f766e",
-                      color: "white",
-                      border: "none",
-                    }}
-                  >
-                    匯出會計明細
-                  </button>
-                </div>
-
-                <div style={{ marginTop: 16 }}>
-                  <Row label="理想薪資" value={settings.idealSalary} />
-                  <Row label="差距" value={gap} />
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "10px 0",
-                      borderBottom: "1px solid #eef2f7",
-                    }}
-                  >
-                    <span>達成率</span>
-                    <span style={{ fontWeight: 700 }}>
-                      {(progress * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <Row label="尚需業績估算" value={neededSalesEstimate} strong />
-                  <div style={{ color: "#64748b", marginTop: 12, fontSize: 14 }}>
-                    尚需業績用 3% 平均抽成估算。
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {tab === "deductions" && (
-          <div style={panelStyle}>
-            <h2 style={{ marginTop: 0 }}>其他扣薪＋備註</h2>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "180px 1fr 120px",
-                gap: 8,
-                marginBottom: 16,
-              }}
-            >
-              <input
-                value={deductionForm.amount}
-                onChange={(e) =>
-                  setDeductionForm((prev) => ({
-                    ...prev,
-                    amount: e.target.value,
-                  }))
-                }
-                placeholder="扣薪金額"
-                style={inputStyle}
-              />
-              <input
-                value={deductionForm.note}
-                onChange={(e) =>
-                  setDeductionForm((prev) => ({
-                    ...prev,
-                    note: e.target.value,
-                  }))
-                }
-                placeholder="備註"
-                style={inputStyle}
-              />
-              <button
-                onClick={addDeduction}
-                style={{
-                  ...buttonStyle,
-                  background: "#0f766e",
-                  color: "white",
-                  border: "none",
-                }}
-              >
-                新增
-              </button>
-            </div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              {deductions.length === 0 ? (
-                <div style={{ color: "#64748b" }}>目前沒有其他扣薪。</div>
-              ) : null}
-
-              {deductions.map((item) => (
-                <div
-                  key={item.id}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 14,
-                    padding: 12,
-                    background: "white",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{formatNumber(item.amount)}</div>
-                    <div style={{ color: "#64748b", fontSize: 14 }}>
-                      {item.note || "無備註"}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() =>
-                      setDeductions((prev) =>
-                        prev.filter((d) => d.id !== item.id)
-                      )
-                    }
-                    style={buttonStyle}
-                  >
-                    刪除
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {tab === "settings" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-              gap: 16,
-            }}
-          >
-            <div style={panelStyle}>
-              <h2 style={{ marginTop: 0 }}>薪資設定</h2>
-              <Field label="理想薪資">
-                <input
-                  value={settings.idealSalary}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      idealSalary: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="底薪">
-                <input
-                  value={settings.baseSalary}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      baseSalary: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="伙食+車資">
-                <input
-                  value={settings.mealTransport}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      mealTransport: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="跑店津貼">
-                <input
-                  value={settings.travelAllowance}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      travelAllowance: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="固定扣薪">
-                <input
-                  value={settings.fixedDeduction}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      fixedDeduction: Number(e.target.value || 0),
-                    }))
-                  }
-                  style={inputStyle}
-                />
-              </Field>
-            </div>
-
-            <div style={panelStyle}>
-              <h2 style={{ marginTop: 0 }}>店家設定</h2>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <input
-                  value={newStore}
-                  onChange={(e) => setNewStore(e.target.value)}
-                  placeholder="新增店家，例如 A26"
-                  style={inputStyle}
-                />
-                <button
-                  onClick={addStore}
-                  style={{
-                    ...buttonStyle,
-                    background: "#0f766e",
-                    color: "white",
-                    border: "none",
-                  }}
-                >
-                  新增
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4, 1fr)",
-                  gap: 8,
-                }}
-              >
-                {stores.map((store) => (
-                  <div
-                    key={store}
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 12,
-                      padding: 10,
-                      textAlign: "center",
-                      background: "white",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {store}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+      <div class="form-group">
+        <label for="scheduleInput">行程</label>
+        <select id="scheduleInput">
+          <option value="">請選擇</option>
+          <option>淇AA</option>
+          <option>淇AD</option>
+          <option>淇A9</option>
+          <option>淇A1</option>
+          <option>淇A2</option>
+          <option>淇A3</option>
+          <option>淇A6</option>
+          <option>淇A7</option>
+          <option>淇A11</option>
+          <option>淇A13</option>
+          <option>淇休假</option>
+          <option>週會</option>
+          <option>店長會議</option>
+          <option>週會+店長會議</option>
+          <option>升等考</option>
+          <option>100天</option>
+          <option>淇POP上課</option>
+        </select>
       </div>
 
-      {showForm && (
-        <div style={overlayStyle}>
-          <div style={modalStyle}>
-            <h2 style={{ marginTop: 0 }}>
-              {editId ? "編輯資料" : "新增資料"}｜{selectedDate}
-            </h2>
+      <div class="form-group">
+        <label for="performanceInput">業績</label>
+        <input type="number" id="performanceInput" placeholder="例如 8000">
+      </div>
 
-            <Field label="店家">
-              <select
-                value={form.store}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, store: e.target.value }))
-                }
-                style={inputStyle}
-              >
-                {stores.map((store) => (
-                  <option key={store} value={store}>
-                    {store}
-                  </option>
-                ))}
-              </select>
-            </Field>
+      <div class="form-group">
+        <label for="salaryInput">薪水</label>
+        <input type="number" id="salaryInput" placeholder="例如 3200">
+      </div>
 
-            <Field label="業績">
-              <input
-                value={form.sales}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, sales: e.target.value }))
-                }
-                style={inputStyle}
-              />
-            </Field>
+      <div class="form-group">
+        <label for="noteInput">備註</label>
+        <textarea id="noteInput" placeholder="可不填"></textarea>
+      </div>
 
-            <Field label="尾款">
-              <input
-                value={form.tail}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, tail: e.target.value }))
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="退款">
-              <input
-                value={form.refund}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, refund: e.target.value }))
-                }
-                style={{ ...inputStyle, color: "#dc2626" }}
-              />
-            </Field>
-
-            <Field label="產品獎金">
-              <input
-                value={form.productBonus}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    productBonus: e.target.value,
-                  }))
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <div
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 14,
-                padding: 12,
-                background: "#f8fafc",
-                marginTop: 12,
-                lineHeight: 1.8,
-              }}
-            >
-              <div>實算業績：{formatNumber(preview.netSales)}</div>
-              <div>業績獎金：{formatNumber(preview.commission)}</div>
-              <div style={{ fontWeight: 700, color: "#047857" }}>
-                店家薪水：{formatNumber(preview.storeSalary)}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 8,
-                marginTop: 16,
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                {editId ? (
-                  <button
-                    onClick={() => deleteEntry(editId)}
-                    style={{ ...buttonStyle, color: "#dc2626" }}
-                  >
-                    刪除
-                  </button>
-                ) : null}
-              </div>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => {
-                    setShowForm(false);
-                    setEditId(null);
-                  }}
-                  style={buttonStyle}
-                >
-                  取消
-                </button>
-                <button
-                  onClick={saveEntry}
-                  style={{
-                    ...buttonStyle,
-                    background: "#0f766e",
-                    color: "white",
-                    border: "none",
-                  }}
-                >
-                  儲存
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <div class="btn-row">
+        <button class="btn secondary" id="deleteDayBtn">清除此日</button>
+        <button class="btn" id="saveDayBtn">儲存</button>
+      </div>
     </div>
-  );
-}
+  </div>
 
-function Row({
-  label,
-  value,
-  strong,
-  color,
-}: {
-  label: string;
-  value: number;
-  strong?: boolean;
-  color?: string;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        padding: "10px 0",
-        borderBottom: "1px solid #eef2f7",
-      }}
-    >
-      <span>{label}</span>
-      <span style={{ fontWeight: strong ? 700 : 500, color }}>
-        {formatNumber(value)}
-      </span>
-    </div>
-  );
-}
+  <script>
+    const STORAGE_KEY = "salary_calendar_v5_data";
+    const SETTINGS_KEY = "salary_calendar_v5_settings";
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ marginBottom: 6, fontWeight: 700 }}>{label}</div>
-      {children}
-    </div>
-  );
-}
+    let currentDate = new Date();
+    let selectedDateKey = "";
 
-const buttonStyle: React.CSSProperties = {
-  fontFamily: "inherit",
-  border: "1px solid #cbd5e1",
-  background: "white",
-  borderRadius: 12,
-  padding: "10px 14px",
-  cursor: "pointer",
-  fontWeight: 700,
-};
+    let dataStore = loadData();
+    let settings = loadSettings();
 
-const tabStyle: React.CSSProperties = {
-  ...buttonStyle,
-  background: "white",
-};
+    const monthTitle = document.getElementById("monthTitle");
+    const calendarGrid = document.getElementById("calendarGrid");
 
-const activeTabStyle: React.CSSProperties = {
-  ...buttonStyle,
-  background: "#0f766e",
-  color: "white",
-  border: "none",
-};
+    const totalSalaryCard = document.getElementById("totalSalaryCard");
+    const salaryGapCard = document.getElementById("salaryGapCard");
+    const totalPerformanceCard = document.getElementById("totalPerformanceCard");
+    const completionRateCard = document.getElementById("completionRateCard");
 
-const panelStyle: React.CSSProperties = {
-  background: "#ffffff",
-  borderRadius: 20,
-  padding: 16,
-  border: "1px solid #e5e7eb",
-  boxShadow: "0 6px 20px rgba(15, 23, 42, 0.05)",
-};
+    const statsPerformance = document.getElementById("statsPerformance");
+    const statsSalary = document.getElementById("statsSalary");
+    const statsDeduction = document.getElementById("statsDeduction");
+    const statsAvgPerformance = document.getElementById("statsAvgPerformance");
+    const statsAvgSalary = document.getElementById("statsAvgSalary");
+    const statsRate = document.getElementById("statsRate");
 
-const summaryCardStyle: React.CSSProperties = {
-  background: "white",
-  borderRadius: 20,
-  padding: 16,
-  border: "1px solid #e5e7eb",
-  boxShadow: "0 6px 20px rgba(15, 23, 42, 0.05)",
-};
+    const targetSalaryInput = document.getElementById("targetSalaryInput");
+    const monthlyDeductionInput = document.getElementById("monthlyDeductionInput");
 
-const summaryTitleStyle: React.CSSProperties = {
-  color: "#64748b",
-  fontSize: 14,
-};
+    const editModal = document.getElementById("editModal");
+    const modalTitle = document.getElementById("modalTitle");
+    const scheduleInput = document.getElementById("scheduleInput");
+    const performanceInput = document.getElementById("performanceInput");
+    const salaryInput = document.getElementById("salaryInput");
+    const noteInput = document.getElementById("noteInput");
 
-const summaryValueStyle: React.CSSProperties = {
-  fontWeight: 700,
-  fontSize: 28,
-  marginTop: 6,
-};
+    function loadData(){
+      try{
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+      }catch(e){
+        return {};
+      }
+    }
 
-const inputStyle: React.CSSProperties = {
-  fontFamily: "inherit",
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  boxSizing: "border-box",
-};
+    function saveData(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataStore));
+    }
 
-const overlayStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 16,
-};
+    function loadSettings(){
+      try{
+        return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {
+          targetSalary: 150000,
+          monthlyDeduction: 0
+        };
+      }catch(e){
+        return {
+          targetSalary: 150000,
+          monthlyDeduction: 0
+        };
+      }
+    }
 
-const modalStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 520,
-  background: "white",
-  borderRadius: 20,
-  padding: 20,
-  boxSizing: "border-box",
-};
+    function saveSettings(){
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    }
 
-export default App;
+    function formatCurrency(num){
+      const value = Number(num || 0);
+      return "$" + value.toLocaleString("zh-Hant-TW", {
+        maximumFractionDigits: 2
+      });
+    }
+
+    function formatPercent(num){
+      return `${Number(num || 0).toFixed(1)}%`;
+    }
+
+    function pad(num){
+      return String(num).padStart(2, "0");
+    }
+
+    function getDateKey(date){
+      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
+    }
+
+    function getMonthKey(date){
+      return `${date.getFullYear()}-${pad(date.getMonth()+1)}`;
+    }
+
+    function isToday(date){
+      const today = new Date();
+      return (
+        date.getFullYear() === today.getFullYear() &&
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate()
+      );
+    }
+
+    function renderAll(){
+      renderHeader();
+      renderCalendar();
+      renderSummary();
+      renderStats();
+      syncSettingsInputs();
+    }
+
+    function renderHeader(){
+      monthTitle.textContent = `${currentDate.getFullYear()} / ${pad(currentDate.getMonth()+1)}`;
+    }
+
+    function renderCalendar(){
+      calendarGrid.innerHTML = "";
+
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      const firstDay = new Date(year, month, 1);
+      const startWeekday = firstDay.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const prevMonthDays = new Date(year, month, 0).getDate();
+
+      const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
+
+      for(let i = 0; i < totalCells; i++){
+        let cellDate;
+        let otherMonth = false;
+
+        if(i < startWeekday){
+          cellDate = new Date(year, month - 1, prevMonthDays - startWeekday + i + 1);
+          otherMonth = true;
+        }else if(i >= startWeekday + daysInMonth){
+          cellDate = new Date(year, month + 1, i - (startWeekday + daysInMonth) + 1);
+          otherMonth = true;
+        }else{
+          cellDate = new Date(year, month, i - startWeekday + 1);
+        }
+
+        const dateKey = getDateKey(cellDate);
+        const entry = dataStore[dateKey] || {};
+
+        const cell = document.createElement("div");
+        cell.className = "day-cell";
+        if(otherMonth) cell.classList.add("other-month");
+        if(isToday(cellDate) && !otherMonth) cell.classList.add("today");
+
+        const schedule = entry.schedule ? `<div class="entry-line entry-schedule">${escapeHtml(entry.schedule)}</div>` : `<div class="entry-line entry-empty">—</div>`;
+        const performance = `<div class="entry-line entry-performance">業績 ${formatCurrency(entry.performance || 0)}</div>`;
+        const salary = `<div class="entry-line entry-salary">薪水 ${formatCurrency(entry.salary || 0)}</div>`;
+
+        cell.innerHTML = `
+          <div class="date-num">${cellDate.getDate()}</div>
+          <div class="divider"></div>
+          ${schedule}
+          ${performance}
+          ${salary}
+        `;
+
+        cell.addEventListener("click", () => openEditor(dateKey));
+        calendarGrid.appendChild(cell);
+      }
+    }
+
+    function renderSummary(){
+      const monthData = getCurrentMonthData();
+      const totalPerformance = monthData.totalPerformance;
+      const totalSalaryRaw = monthData.totalSalary;
+      const deduction = Number(settings.monthlyDeduction || 0);
+      const totalSalary = totalSalaryRaw - deduction;
+      const targetSalary = Number(settings.targetSalary || 0);
+      const gap = Math.max(targetSalary - totalSalary, 0);
+      const rate = targetSalary > 0 ? (totalSalary / targetSalary) * 100 : 0;
+
+      totalSalaryCard.textContent = formatCurrency(totalSalary);
+      totalSalaryCard.className = "value " + (totalSalary >= 0 ? "green" : "red");
+
+      salaryGapCard.textContent = formatCurrency(gap);
+      totalPerformanceCard.textContent = formatCurrency(totalPerformance);
+      completionRateCard.textContent = formatPercent(rate);
+    }
+
+    function renderStats(){
+      const monthData = getCurrentMonthData();
+      const totalPerformance = monthData.totalPerformance;
+      const totalSalaryRaw = monthData.totalSalary;
+      const activeDays = monthData.activeDays;
+      const deduction = Number(settings.monthlyDeduction || 0);
+      const totalSalary = totalSalaryRaw - deduction;
+      const targetSalary = Number(settings.targetSalary || 0);
+      const rate = targetSalary > 0 ? (totalSalary / targetSalary) * 100 : 0;
+
+      statsPerformance.textContent = formatCurrency(totalPerformance);
+      statsSalary.textContent = formatCurrency(totalSalary);
+      statsDeduction.textContent = formatCurrency(deduction);
+      statsAvgPerformance.textContent = formatCurrency(activeDays > 0 ? totalPerformance / activeDays : 0);
+      statsAvgSalary.textContent = formatCurrency(activeDays > 0 ? totalSalaryRaw / activeDays : 0);
+      statsRate.textContent = formatPercent(rate);
+    }
+
+    function getCurrentMonthData(){
+      const key = getMonthKey(currentDate);
+      let totalPerformance = 0;
+      let totalSalary = 0;
+      let activeDays = 0;
+
+      Object.keys(dataStore).forEach(dateKey => {
+        if(dateKey.startsWith(key)){
+          const item = dataStore[dateKey] || {};
+          const performance = Number(item.performance || 0);
+          const salary = Number(item.salary || 0);
+
+          totalPerformance += performance;
+          totalSalary += salary;
+
+          if(item.schedule || performance !== 0 || salary !== 0 || item.note){
+            activeDays += 1;
+          }
+        }
+      });
+
+      return {
+        totalPerformance,
+        totalSalary,
+        activeDays
+      };
+    }
+
+    function syncSettingsInputs(){
+      targetSalaryInput.value = settings.targetSalary ?? 150000;
+      monthlyDeductionInput.value = settings.monthlyDeduction ?? 0;
+    }
+
+    function openEditor(dateKey){
+      selectedDateKey = dateKey;
+      const entry = dataStore[dateKey] || {};
+
+      modalTitle.textContent = `編輯 ${dateKey}`;
+      scheduleInput.value = entry.schedule || "";
+      performanceInput.value = entry.performance ?? "";
+      salaryInput.value = entry.salary ?? "";
+      noteInput.value = entry.note || "";
+
+      editModal.classList.add("show");
+    }
+
+    function closeEditor(){
+      editModal.classList.remove("show");
+    }
+
+    function saveDay(){
+      if(!selectedDateKey) return;
+
+      dataStore[selectedDateKey] = {
+        schedule: scheduleInput.value.trim(),
+        performance: Number(performanceInput.value || 0),
+        salary: Number(salaryInput.value || 0),
+        note: noteInput.value.trim()
+      };
+
+      saveData();
+      closeEditor();
+      renderAll();
+    }
+
+    function deleteDay(){
+      if(!selectedDateKey) return;
+      delete dataStore[selectedDateKey];
+      saveData();
+      closeEditor();
+      renderAll();
+    }
+
+    function escapeHtml(text){
+      return String(text)
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#039;");
+    }
+
+    document.getElementById("prevMonthBtn").addEventListener("click", () => {
+      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+      renderAll();
+    });
+
+    document.getElementById("nextMonthBtn").addEventListener("click", () => {
+      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      renderAll();
+    });
+
+    document.getElementById("todayBtn").addEventListener("click", () => {
+      currentDate = new Date();
+      renderAll();
+    });
+
+    document.getElementById("saveDayBtn").addEventListener("click", saveDay);
+    document.getElementById("deleteDayBtn").addEventListener("click", deleteDay);
+
+    document.getElementById("saveSettingsBtn").addEventListener("click", () => {
+      settings.targetSalary = Number(targetSalaryInput.value || 0);
+      saveSettings();
+      renderAll();
+      alert("設定已儲存");
+    });
+
+    document.getElementById("saveDeductionBtn").addEventListener("click", () => {
+      settings.monthlyDeduction = Number(monthlyDeductionInput.value || 0);
+      saveSettings();
+      renderAll();
+      alert("扣薪已儲存");
+    });
+
+    editModal.addEventListener("click", (e) => {
+      if(e.target === editModal){
+        closeEditor();
+      }
+    });
+
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.tab).classList.add("active");
+      });
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>
