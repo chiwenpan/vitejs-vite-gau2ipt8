@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type Entry = {
   id: string;
@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-v6";
+const STORAGE_KEY = "salary-calendar-app-v7";
 
 const defaultStores = [
   "AA",
@@ -84,7 +84,11 @@ function calcEntry(entry: Entry) {
   const commission = getCommission(netSales);
   const storeSalary = commission + Number(entry.productBonus || 0);
 
-  return { netSales, commission, storeSalary };
+  return {
+    netSales,
+    commission,
+    storeSalary,
+  };
 }
 
 function downloadExcel(filename: string, rows: (string | number)[][]) {
@@ -129,7 +133,7 @@ function downloadExcel(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
-function App() {
+export default function App() {
   const today = new Date();
 
   const [tab, setTab] = useState<
@@ -185,12 +189,35 @@ function App() {
   }, [stores, settings, entries, deductions]);
 
   const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const monthEntries = entries.filter((item) => item.date.startsWith(monthKey));
 
-  const monthCalculated = monthEntries.map((entry) => ({
-    ...entry,
-    ...calcEntry(entry),
-  }));
+  const monthEntries = useMemo(() => {
+    return entries.filter((item) => item.date.startsWith(monthKey));
+  }, [entries, monthKey]);
+
+  const monthCalculated = useMemo(() => {
+    return monthEntries.map((entry) => ({
+      ...entry,
+      ...calcEntry(entry),
+    }));
+  }, [monthEntries]);
+
+  const entriesByDate = useMemo(() => {
+    const map: Record<
+      string,
+      Array<Entry & { netSales: number; commission: number; storeSalary: number }>
+    > = {};
+
+    monthCalculated.forEach((entry) => {
+      if (!map[entry.date]) map[entry.date] = [];
+      map[entry.date].push(entry);
+    });
+
+    return map;
+  }, [monthCalculated]);
+
+  const selectedEntries = useMemo(() => {
+    return (entriesByDate[selectedDate] || []).slice();
+  }, [entriesByDate, selectedDate]);
 
   const salesTotal = monthCalculated.reduce((sum, item) => sum + item.sales, 0);
   const tailTotal = monthCalculated.reduce((sum, item) => sum + item.tail, 0);
@@ -233,10 +260,6 @@ function App() {
     settings.idealSalary > 0 ? actualSalary / settings.idealSalary : 0;
   const neededSalesEstimate = gap <= 0 ? 0 : gap / 0.03;
 
-  const selectedEntries = entries
-    .filter((entry) => entry.date === selectedDate)
-    .map((entry) => ({ ...entry, ...calcEntry(entry) }));
-
   const monthStart = new Date(year, month, 1);
   const gridStart = new Date(monthStart);
   gridStart.setDate(monthStart.getDate() - monthStart.getDay());
@@ -247,15 +270,17 @@ function App() {
     return d;
   });
 
-  const preview = calcEntry({
-    id: "preview",
-    date: selectedDate,
-    store: form.store,
-    sales: Number(form.sales || 0),
-    tail: Number(form.tail || 0),
-    refund: Number(form.refund || 0),
-    productBonus: Number(form.productBonus || 0),
-  });
+  const preview = useMemo(() => {
+    return calcEntry({
+      id: "preview",
+      date: selectedDate,
+      store: form.store,
+      sales: Number(form.sales || 0),
+      tail: Number(form.tail || 0),
+      refund: Number(form.refund || 0),
+      productBonus: Number(form.productBonus || 0),
+    });
+  }, [form, selectedDate]);
 
   function openNewEntry(dateValue: string) {
     setSelectedDate(dateValue);
@@ -298,11 +323,9 @@ function App() {
       if (editId) {
         return prev.map((item) => (item.id === editId ? payload : item));
       }
-      const next = [...prev, payload].sort((a, b) => a.date.localeCompare(b.date));
-      return next;
+      return [...prev, payload].sort((a, b) => a.date.localeCompare(b.date));
     });
 
-    setSelectedDate(payload.date);
     setShowForm(false);
     setEditId(null);
   }
@@ -495,145 +518,149 @@ function App() {
         {tab === "calendar" && (
           <>
             <div style={panelStyle}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gap: 8,
-                  marginBottom: 8,
-                }}
-              >
-                {["日", "一", "二", "三", "四", "五", "六"].map((name) => (
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                <div style={{ minWidth: 980 }}>
                   <div
-                    key={name}
                     style={{
-                      textAlign: "center",
-                      fontWeight: 700,
-                      color: "#64748b",
-                      fontSize: 15,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                      gap: 8,
+                      marginBottom: 8,
                     }}
                   >
-                    {name}
-                  </div>
-                ))}
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gap: 8,
-                }}
-              >
-                {days.map((date) => {
-                  const dateValue = toDateValue(date);
-                  const dayEntries = entries.filter((entry) => entry.date === dateValue);
-                  const calculatedEntries = dayEntries.map((entry) => ({
-                    ...entry,
-                    ...calcEntry(entry),
-                  }));
-                  const salaryTotal = calculatedEntries.reduce(
-                    (sum, entry) => sum + entry.storeSalary,
-                    0
-                  );
-                  const inMonth = date.getMonth() === month;
-                  const hasRefund = dayEntries.some((item) => item.refund > 0);
-
-                  return (
-                    <button
-                      key={dateValue}
-                      onClick={() => openNewEntry(dateValue)}
-                      style={{
-                        minHeight: 185,
-                        borderRadius: 16,
-                        border:
-                          selectedDate === dateValue
-                            ? "2px solid #0f766e"
-                            : "1px solid #dbe4ee",
-                        background: "white",
-                        padding: 10,
-                        textAlign: "left",
-                        opacity: inMonth ? 1 : 0.35,
-                        cursor: "pointer",
-                        overflow: "hidden",
-                      }}
-                    >
+                    {["日", "一", "二", "三", "四", "五", "六"].map((name) => (
                       <div
+                        key={name}
                         style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          marginBottom: 8,
-                          alignItems: "center",
+                          textAlign: "center",
+                          fontWeight: 700,
+                          color: "#64748b",
+                          fontSize: 16,
                         }}
                       >
-                        <div style={{ fontWeight: 700, fontSize: 16 }}>
-                          {date.getDate()}
-                        </div>
-                        {hasRefund ? (
+                        {name}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    {days.map((date) => {
+                      const dateValue = toDateValue(date);
+                      const calculatedEntries = entriesByDate[dateValue] || [];
+                      const salaryTotal = calculatedEntries.reduce(
+                        (sum, entry) => sum + entry.storeSalary,
+                        0
+                      );
+                      const inMonth = date.getMonth() === month;
+                      const hasRefund = calculatedEntries.some(
+                        (item) => item.refund > 0
+                      );
+
+                      return (
+                        <button
+                          key={dateValue}
+                          onClick={() => openNewEntry(dateValue)}
+                          style={{
+                            minHeight: 132,
+                            borderRadius: 16,
+                            border:
+                              selectedDate === dateValue
+                                ? "2px solid #0f766e"
+                                : "1px solid #dbe4ee",
+                            background: "white",
+                            padding: 10,
+                            textAlign: "left",
+                            opacity: inMonth ? 1 : 0.35,
+                            cursor: "pointer",
+                            overflow: "hidden",
+                          }}
+                        >
                           <div
                             style={{
-                              color: "#dc2626",
-                              fontSize: 12,
-                              fontWeight: 700,
+                              display: "flex",
+                              justifyContent: "space-between",
+                              marginBottom: 8,
+                              alignItems: "center",
                             }}
                           >
-                            退款
-                          </div>
-                        ) : (
-                          <div />
-                        )}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 14,
-                          lineHeight: 1.5,
-                          minHeight: 82,
-                        }}
-                      >
-                        {calculatedEntries.length > 0 && (
-                          <>
-                            {calculatedEntries.slice(0, 2).map((entry) => (
-                              <div key={entry.id} style={{ marginBottom: 6 }}>
-                                <div
-                                  style={{
-                                    fontWeight: 700,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {entry.store} {formatNumber(entry.storeSalary)}
-                                </div>
+                            <div style={{ fontWeight: 700, fontSize: 16 }}>
+                              {date.getDate()}
+                            </div>
+                            {hasRefund ? (
+                              <div
+                                style={{
+                                  color: "#dc2626",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                退款
                               </div>
-                            ))}
-                            {calculatedEntries.length > 2 && (
-                              <div style={{ color: "#64748b" }}>
-                                +{calculatedEntries.length - 2}筆
-                              </div>
+                            ) : (
+                              <div />
                             )}
-                          </>
-                        )}
-                      </div>
+                          </div>
 
-                      <div
-                        style={{
-                          marginTop: 8,
-                          paddingTop: 8,
-                          borderTop: "1px solid #e5e7eb",
-                          fontWeight: 700,
-                          color: "#047857",
-                          fontSize: 14,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        薪水 {formatNumber(salaryTotal)}
-                      </div>
-                    </button>
-                  );
-                })}
+                          <div
+                            style={{
+                              fontSize: 14,
+                              lineHeight: 1.45,
+                              minHeight: 52,
+                            }}
+                          >
+                            {calculatedEntries.length > 0 && (
+                              <>
+                                {calculatedEntries.slice(0, 2).map((entry) => (
+                                  <div key={entry.id} style={{ marginBottom: 4 }}>
+                                    <div
+                                      style={{
+                                        fontWeight: 700,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                      }}
+                                    >
+                                      {entry.store} {formatNumber(entry.storeSalary)}
+                                    </div>
+                                  </div>
+                                ))}
+                                {calculatedEntries.length > 2 && (
+                                  <div style={{ color: "#64748b" }}>
+                                    +{calculatedEntries.length - 2}筆
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+
+                          {calculatedEntries.length > 0 && (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                paddingTop: 8,
+                                borderTop: "1px solid #e5e7eb",
+                                fontWeight: 700,
+                                color: "#047857",
+                                fontSize: 14,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              薪水 {formatNumber(salaryTotal)}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1306,5 +1333,3 @@ const modalStyle: React.CSSProperties = {
   padding: 20,
   boxSizing: "border-box",
 };
-
-export default App;
