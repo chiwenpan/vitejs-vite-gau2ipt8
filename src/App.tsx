@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-final-v8";
+const STORAGE_KEY = "salary-calendar-app-final-v9";
 
 const defaultStores = [
   "AA",
@@ -162,6 +162,7 @@ export default function App() {
 
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
+  const [zoom, setZoom] = useState(1);
 
   const [stores, setStores] = useState<string[]>(defaultStores);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -194,9 +195,7 @@ export default function App() {
     try {
       const data = JSON.parse(raw);
 
-      const safeStores = sanitizeStores(data.stores || defaultStores);
-
-      setStores(safeStores);
+      setStores(sanitizeStores(data.stores || defaultStores));
       setSettings(data.settings || defaultSettings);
       setEntries(Array.isArray(data.entries) ? data.entries : []);
       setDeductions(Array.isArray(data.deductions) ? data.deductions : []);
@@ -391,7 +390,6 @@ export default function App() {
 
   function removeStore(storeName: string) {
     if (defaultStores.includes(storeName)) return;
-
     setStores((prev) => prev.filter((item) => item !== storeName));
   }
 
@@ -546,13 +544,46 @@ export default function App() {
           >
             設定
           </button>
+
+          {tab === "calendar" && (
+            <>
+              <button
+                onClick={() =>
+                  setZoom((z) => Math.max(0.85, Number((z - 0.1).toFixed(2))))
+                }
+                style={buttonStyle}
+              >
+                縮小
+              </button>
+              <button
+                onClick={() =>
+                  setZoom((z) => Math.min(1.3, Number((z + 0.1).toFixed(2))))
+                }
+                style={buttonStyle}
+              >
+                放大
+              </button>
+            </>
+          )}
         </div>
 
         {tab === "calendar" && (
           <>
             <div style={panelStyle}>
-              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-                <div style={{ minWidth: 980 }}>
+              <div
+                style={{
+                  overflowX: "auto",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                <div
+                  style={{
+                    minWidth: 980,
+                    transform: `scale(${zoom})`,
+                    transformOrigin: "top left",
+                    width: `${100 / zoom}%`,
+                  }}
+                >
                   <div
                     style={{
                       display: "grid",
@@ -598,7 +629,7 @@ export default function App() {
                       return (
                         <button
                           key={dateValue}
-                          onClick={() => setSelectedDate(dateValue)}
+                          onClick={() => openNewEntry(dateValue)}
                           style={{
                             minHeight: 132,
                             borderRadius: 16,
@@ -918,6 +949,8 @@ export default function App() {
               }}
             >
               <input
+                type="number"
+                inputMode="numeric"
                 value={deductionForm.amount}
                 onChange={(e) =>
                   setDeductionForm((prev) => ({
@@ -1004,6 +1037,8 @@ export default function App() {
               <h2 style={{ marginTop: 0 }}>薪資設定</h2>
               <Field label="理想薪資">
                 <input
+                  type="number"
+                  inputMode="numeric"
                   value={settings.idealSalary}
                   onChange={(e) =>
                     setSettings((prev) => ({
@@ -1016,6 +1051,8 @@ export default function App() {
               </Field>
               <Field label="底薪">
                 <input
+                  type="number"
+                  inputMode="numeric"
                   value={settings.baseSalary}
                   onChange={(e) =>
                     setSettings((prev) => ({
@@ -1028,6 +1065,8 @@ export default function App() {
               </Field>
               <Field label="伙食+車資">
                 <input
+                  type="number"
+                  inputMode="numeric"
                   value={settings.mealTransport}
                   onChange={(e) =>
                     setSettings((prev) => ({
@@ -1040,6 +1079,8 @@ export default function App() {
               </Field>
               <Field label="跑店津貼">
                 <input
+                  type="number"
+                  inputMode="numeric"
                   value={settings.travelAllowance}
                   onChange={(e) =>
                     setSettings((prev) => ({
@@ -1052,6 +1093,8 @@ export default function App() {
               </Field>
               <Field label="固定扣薪">
                 <input
+                  type="number"
+                  inputMode="numeric"
                   value={settings.fixedDeduction}
                   onChange={(e) =>
                     setSettings((prev) => ({
@@ -1087,7 +1130,7 @@ export default function App() {
               </div>
 
               <div style={{ color: "#64748b", fontSize: 13, marginBottom: 12 }}>
-                只允許 AA、AD、A數字 這種格式，避免再出現奇怪店名。
+                只允許 AA、AD、A數字 格式。
               </div>
 
               <div style={{ display: "grid", gap: 8 }}>
@@ -1112,7 +1155,11 @@ export default function App() {
                     ) : (
                       <button
                         onClick={() => removeStore(store)}
-                        style={{ ...buttonStyle, color: "#dc2626", padding: "6px 10px" }}
+                        style={{
+                          ...buttonStyle,
+                          color: "#dc2626",
+                          padding: "6px 10px",
+                        }}
                       >
                         刪除
                       </button>
@@ -1150,6 +1197,8 @@ export default function App() {
 
             <Field label="業績">
               <input
+                type="number"
+                inputMode="numeric"
                 value={form.sales}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, sales: e.target.value }))
@@ -1160,6 +1209,8 @@ export default function App() {
 
             <Field label="尾款">
               <input
+                type="number"
+                inputMode="numeric"
                 value={form.tail}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, tail: e.target.value }))
@@ -1170,6 +1221,8 @@ export default function App() {
 
             <Field label="退款">
               <input
+                type="number"
+                inputMode="numeric"
                 value={form.refund}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, refund: e.target.value }))
@@ -1180,6 +1233,8 @@ export default function App() {
 
             <Field label="產品獎金">
               <input
+                type="number"
+                inputMode="numeric"
                 value={form.productBonus}
                 onChange={(e) =>
                   setForm((prev) => ({
