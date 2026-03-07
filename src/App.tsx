@@ -24,7 +24,7 @@ type Settings = {
   fixedDeduction: number;
 };
 
-const STORAGE_KEY = "salary-calendar-app-v3";
+const STORAGE_KEY = "salary-calendar-app-v4";
 
 const defaultStores = [
   "AA",
@@ -80,8 +80,10 @@ function calcEntry(entry: Entry) {
     Number(entry.sales || 0) +
     Number(entry.tail || 0) -
     Number(entry.refund || 0);
+
   const commission = getCommission(netSales);
   const storeSalary = commission + Number(entry.productBonus || 0);
+
   return { netSales, commission, storeSalary };
 }
 
@@ -97,6 +99,7 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   const blob = new Blob(["\uFEFF" + csv], {
     type: "text/csv;charset=utf-8;",
   });
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -107,9 +110,11 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
 
 function App() {
   const today = new Date();
+
   const [tab, setTab] = useState<
     "calendar" | "summary" | "deductions" | "settings"
   >("calendar");
+
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [stores, setStores] = useState<string[]>(defaultStores);
@@ -119,6 +124,7 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(toDateValue(today));
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+
   const [form, setForm] = useState({
     store: defaultStores[0],
     sales: "",
@@ -126,15 +132,18 @@ function App() {
     refund: "",
     productBonus: "",
   });
+
   const [deductionForm, setDeductionForm] = useState({
     amount: "",
     note: "",
   });
+
   const [newStore, setNewStore] = useState("");
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
+
     try {
       const data = JSON.parse(raw);
       setStores(data.stores || defaultStores);
@@ -142,7 +151,7 @@ function App() {
       setEntries(data.entries || []);
       setDeductions(data.deductions || []);
     } catch {
-      // ignore bad local data
+      //
     }
   }, []);
 
@@ -186,16 +195,19 @@ function App() {
     settings.baseSalary +
     settings.mealTransport +
     settings.travelAllowance;
+
   const otherDeductionTotal = deductions.reduce(
     (sum, item) => sum + item.amount,
     0
   );
+
   const actualSalary =
     fixedIncome +
     commissionTotal +
     productBonusTotal -
     settings.fixedDeduction -
     otherDeductionTotal;
+
   const gap = settings.idealSalary - actualSalary;
   const progress =
     settings.idealSalary > 0 ? actualSalary / settings.idealSalary : 0;
@@ -281,6 +293,7 @@ function App() {
 
   function addDeduction() {
     if (!deductionForm.amount) return;
+
     setDeductions((prev) => [
       ...prev,
       {
@@ -289,12 +302,14 @@ function App() {
         note: deductionForm.note,
       },
     ]);
+
     setDeductionForm({ amount: "", note: "" });
   }
 
   function addStore() {
     const value = newStore.trim().toUpperCase();
     if (!value || stores.includes(value)) return;
+
     setStores((prev) =>
       [...prev, value].sort((a, b) =>
         a.localeCompare(b, undefined, { numeric: true })
@@ -334,25 +349,9 @@ function App() {
   });
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f5f7fb",
-        fontFamily: "Arial, sans-serif",
-        color: "#111827",
-      }}
-    >
+    <div style={appStyle}>
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            marginBottom: 16,
-          }}
-        >
+        <div style={headerWrapStyle}>
           <div>
             <h1 style={{ margin: 0, fontSize: 28 }}>私人薪資月曆 App</h1>
             <div style={{ color: "#64748b", marginTop: 6 }}>
@@ -360,19 +359,16 @@ function App() {
             </div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={toolbarStyle}>
             <button
               onClick={() => {
                 const d = new Date(year, month - 1, 1);
                 setYear(d.getFullYear());
                 setMonth(d.getMonth());
+                const selected = new Date(selectedDate);
+                selected.setFullYear(d.getFullYear());
+                selected.setMonth(d.getMonth());
+                setSelectedDate(toDateValue(selected));
               }}
               style={buttonStyle}
             >
@@ -388,6 +384,10 @@ function App() {
                 const d = new Date(year, month + 1, 1);
                 setYear(d.getFullYear());
                 setMonth(d.getMonth());
+                const selected = new Date(selectedDate);
+                selected.setFullYear(d.getFullYear());
+                selected.setMonth(d.getMonth());
+                setSelectedDate(toDateValue(selected));
               }}
               style={buttonStyle}
             >
@@ -395,7 +395,7 @@ function App() {
             </button>
 
             <button
-              onClick={() => openNewEntry(toDateValue(new Date(year, month, 1)))}
+              onClick={() => openNewEntry(selectedDate)}
               style={{
                 ...buttonStyle,
                 background: "#0f766e",
@@ -408,7 +408,35 @@ function App() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+        {tab === "calendar" && (
+          <div style={topCardsGridStyle}>
+            <div style={summaryCardStyle}>
+              <div style={summaryTitleStyle}>本月薪水</div>
+              <div style={summaryValueStyle}>{formatNumber(actualSalary)}</div>
+            </div>
+            <div style={summaryCardStyle}>
+              <div style={summaryTitleStyle}>距離理想薪資差距</div>
+              <div
+                style={{
+                  ...summaryValueStyle,
+                  color: gap > 0 ? "#dc2626" : "#047857",
+                }}
+              >
+                {formatNumber(gap)}
+              </div>
+            </div>
+            <div style={summaryCardStyle}>
+              <div style={summaryTitleStyle}>尚需業績估算</div>
+              <div style={summaryValueStyle}>{formatNumber(neededSalesEstimate)}</div>
+            </div>
+            <div style={summaryCardStyle}>
+              <div style={summaryTitleStyle}>達成率</div>
+              <div style={summaryValueStyle}>{(progress * 100).toFixed(1)}%</div>
+            </div>
+          </div>
+        )}
+
+        <div style={tabWrapStyle}>
           <button
             onClick={() => setTab("calendar")}
             style={tab === "calendar" ? activeTabStyle : tabStyle}
@@ -437,60 +465,16 @@ function App() {
 
         {tab === "calendar" && (
           <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 12,
-                marginBottom: 16,
-              }}
-            >
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>本月薪水</div>
-                <div style={{ ...summaryValueStyle, color: "#047857" }}>
-                  {formatNumber(actualSalary)}
-                </div>
-              </div>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>距離理想薪資差距</div>
-                <div style={summaryValueStyle}>{formatNumber(gap)}</div>
-              </div>
-              <div style={summaryCardStyle}>
-                <div style={summaryTitleStyle}>尚需業績估算</div>
-                <div style={summaryValueStyle}>{formatNumber(neededSalesEstimate)}</div>
-              </div>
-            </div>
-
             <div style={panelStyle}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gap: 8,
-                  marginBottom: 8,
-                }}
-              >
+              <div style={weekGridStyle}>
                 {["日", "一", "二", "三", "四", "五", "六"].map((name) => (
-                  <div
-                    key={name}
-                    style={{
-                      textAlign: "center",
-                      fontWeight: 700,
-                      color: "#64748b",
-                    }}
-                  >
+                  <div key={name} style={weekNameStyle}>
                     {name}
                   </div>
                 ))}
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gap: 8,
-                }}
-              >
+              <div style={calendarGridStyle}>
                 {days.map((date) => {
                   const dateValue = toDateValue(date);
                   const dayEntries = groupedByDate[dateValue] || [];
@@ -504,41 +488,20 @@ function App() {
                   return (
                     <button
                       key={dateValue}
-                      onClick={() => {
-                        setSelectedDate(dateValue);
-                      }}
+                      onClick={() => setSelectedDate(dateValue)}
                       style={{
-                        minHeight: 170,
-                        borderRadius: 16,
+                        ...dayCellStyle,
+                        opacity: inMonth ? 1 : 0.45,
                         border:
                           selectedDate === dateValue
                             ? "2px solid #0f766e"
                             : "1px solid #dbe4ee",
-                        background: "white",
-                        padding: 10,
-                        textAlign: "left",
-                        opacity: inMonth ? 1 : 0.45,
-                        cursor: "pointer",
                       }}
                     >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          marginBottom: 8,
-                        }}
-                      >
+                      <div style={dayHeaderStyle}>
                         <div style={{ fontWeight: 700 }}>{date.getDate()}</div>
                         {hasRefund ? (
-                          <div
-                            style={{
-                              color: "#dc2626",
-                              fontSize: 12,
-                              fontWeight: 700,
-                            }}
-                          >
-                            退款
-                          </div>
+                          <div style={refundBadgeStyle}>退款</div>
                         ) : (
                           <div />
                         )}
@@ -554,7 +517,8 @@ function App() {
                                 <div style={{ fontWeight: 700 }}>{entry.store}</div>
                                 <div
                                   style={{
-                                    color: entry.refund > 0 ? "#dc2626" : "#334155",
+                                    color:
+                                      entry.refund > 0 ? "#dc2626" : "#334155",
                                   }}
                                 >
                                   業績 {formatNumber(entry.sales)}
@@ -570,16 +534,7 @@ function App() {
                         )}
                       </div>
 
-                      <div
-                        style={{
-                          marginTop: 8,
-                          paddingTop: 8,
-                          borderTop: "1px solid #e5e7eb",
-                          fontWeight: 700,
-                          color: "#047857",
-                          fontSize: 13,
-                        }}
-                      >
+                      <div style={daySalaryStyle}>
                         當日薪水 {formatNumber(salaryTotal)}
                       </div>
                     </button>
@@ -589,16 +544,7 @@ function App() {
             </div>
 
             <div style={{ ...panelStyle, marginTop: 16 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 12,
-                  flexWrap: "wrap",
-                  gap: 8,
-                }}
-              >
+              <div style={detailHeaderStyle}>
                 <h2 style={{ margin: 0, fontSize: 22 }}>{selectedDate} 明細</h2>
                 <button
                   onClick={() => openNewEntry(selectedDate)}
@@ -618,23 +564,8 @@ function App() {
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
                   {selectedEntries.map((entry) => (
-                    <div
-                      key={entry.id}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 16,
-                        padding: 14,
-                        background: "white",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          flexWrap: "wrap",
-                        }}
-                      >
+                    <div key={entry.id} style={entryCardStyle}>
+                      <div style={entryRowStyle}>
                         <div style={{ lineHeight: 1.7 }}>
                           <div style={{ fontWeight: 700, fontSize: 18 }}>
                             {entry.store}
@@ -672,14 +603,7 @@ function App() {
                 </div>
               )}
 
-              <div
-                style={{
-                  marginTop: 14,
-                  textAlign: "right",
-                  fontSize: 18,
-                  fontWeight: 700,
-                }}
-              >
+              <div style={dayTotalStyle}>
                 當天總薪水：
                 {formatNumber(
                   selectedEntries.reduce((sum, entry) => sum + entry.storeSalary, 0)
@@ -691,13 +615,7 @@ function App() {
 
         {tab === "summary" && (
           <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 12,
-              }}
-            >
+            <div style={topCardsGridStyle}>
               <div style={summaryCardStyle}>
                 <div style={summaryTitleStyle}>當月業績總和</div>
                 <div style={summaryValueStyle}>{formatNumber(salesTotal)}</div>
@@ -718,14 +636,7 @@ function App() {
               </div>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-                gap: 16,
-                marginTop: 16,
-              }}
-            >
+            <div style={twoColGridStyle}>
               <div style={panelStyle}>
                 <h2 style={{ marginTop: 0 }}>薪資統計</h2>
                 <Row label="業績獎金總和" value={commissionTotal} />
@@ -747,15 +658,7 @@ function App() {
               </div>
 
               <div style={panelStyle}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
+                <div style={summaryHeadRowStyle}>
                   <h2 style={{ margin: 0 }}>目標追蹤</h2>
                   <button
                     onClick={exportAccountantReport}
@@ -773,14 +676,7 @@ function App() {
                 <div style={{ marginTop: 16 }}>
                   <Row label="理想薪資" value={settings.idealSalary} />
                   <Row label="差距" value={gap} />
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "10px 0",
-                      borderBottom: "1px solid #eef2f7",
-                    }}
-                  >
+                  <div style={ratioRowStyle}>
                     <span>達成率</span>
                     <span style={{ fontWeight: 700 }}>
                       {(progress * 100).toFixed(1)}%
@@ -800,14 +696,7 @@ function App() {
           <div style={panelStyle}>
             <h2 style={{ marginTop: 0 }}>其他扣薪＋備註</h2>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "180px 1fr 120px",
-                gap: 8,
-                marginBottom: 16,
-              }}
-            >
+            <div style={deductionInputGridStyle}>
               <input
                 value={deductionForm.amount}
                 onChange={(e) =>
@@ -849,18 +738,7 @@ function App() {
               ) : null}
 
               {deductions.map((item) => (
-                <div
-                  key={item.id}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 14,
-                    padding: 12,
-                    background: "white",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
+                <div key={item.id} style={deductionCardStyle}>
                   <div>
                     <div style={{ fontWeight: 700 }}>{formatNumber(item.amount)}</div>
                     <div style={{ color: "#64748b", fontSize: 14 }}>
@@ -884,13 +762,7 @@ function App() {
         )}
 
         {tab === "settings" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-              gap: 16,
-            }}
-          >
+          <div style={twoColGridStyle}>
             <div style={panelStyle}>
               <h2 style={{ marginTop: 0 }}>薪資設定</h2>
               <Field label="理想薪資">
@@ -977,25 +849,9 @@ function App() {
                 </button>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4, 1fr)",
-                  gap: 8,
-                }}
-              >
+              <div style={storeGridStyle}>
                 {stores.map((store) => (
-                  <div
-                    key={store}
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 12,
-                      padding: 10,
-                      textAlign: "center",
-                      background: "white",
-                      fontWeight: 700,
-                    }}
-                  >
+                  <div key={store} style={storeChipStyle}>
                     {store}
                   </div>
                 ))}
@@ -1071,16 +927,7 @@ function App() {
               />
             </Field>
 
-            <div
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 14,
-                padding: 12,
-                background: "#f8fafc",
-                marginTop: 12,
-                lineHeight: 1.8,
-              }}
-            >
+            <div style={previewBoxStyle}>
               <div>實算業績：{formatNumber(preview.netSales)}</div>
               <div>業績獎金：{formatNumber(preview.commission)}</div>
               <div style={{ fontWeight: 700, color: "#047857" }}>
@@ -1088,15 +935,7 @@ function App() {
               </div>
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 8,
-                marginTop: 16,
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={modalFooterStyle}>
               <div>
                 {editId ? (
                   <button
@@ -1150,14 +989,7 @@ function Row({
   color?: string;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        padding: "10px 0",
-        borderBottom: "1px solid #eef2f7",
-      }}
-    >
+    <div style={rowStyle}>
       <span>{label}</span>
       <span style={{ fontWeight: strong ? 700 : 500, color }}>
         {formatNumber(value)}
@@ -1181,7 +1013,186 @@ function Field({
   );
 }
 
+const appStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  background: "#f5f7fb",
+  fontFamily:
+    '"Noto Sans TC", "Microsoft JhengHei", "PingFang TC", "Heiti TC", sans-serif',
+  color: "#111827",
+};
+
+const headerWrapStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 12,
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexWrap: "wrap",
+  marginBottom: 16,
+};
+
+const toolbarStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const topCardsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+  marginBottom: 16,
+};
+
+const tabWrapStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  marginBottom: 16,
+};
+
+const weekGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(7, 1fr)",
+  gap: 8,
+  marginBottom: 8,
+};
+
+const weekNameStyle: React.CSSProperties = {
+  textAlign: "center",
+  fontWeight: 700,
+  color: "#64748b",
+};
+
+const calendarGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(7, 1fr)",
+  gap: 8,
+};
+
+const dayCellStyle: React.CSSProperties = {
+  minHeight: 170,
+  borderRadius: 16,
+  background: "white",
+  padding: 10,
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const dayHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  marginBottom: 8,
+};
+
+const refundBadgeStyle: React.CSSProperties = {
+  color: "#dc2626",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const daySalaryStyle: React.CSSProperties = {
+  marginTop: 8,
+  paddingTop: 8,
+  borderTop: "1px solid #e5e7eb",
+  fontWeight: 700,
+  color: "#047857",
+  fontSize: 13,
+};
+
+const detailHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 12,
+  flexWrap: "wrap",
+  gap: 8,
+};
+
+const entryCardStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 16,
+  padding: 14,
+  background: "white",
+};
+
+const entryRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const dayTotalStyle: React.CSSProperties = {
+  marginTop: 14,
+  textAlign: "right",
+  fontSize: 18,
+  fontWeight: 700,
+};
+
+const twoColGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 16,
+  marginTop: 16,
+};
+
+const summaryHeadRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const ratioRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  padding: "10px 0",
+  borderBottom: "1px solid #eef2f7",
+};
+
+const deductionInputGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "180px 1fr 120px",
+  gap: 8,
+  marginBottom: 16,
+};
+
+const deductionCardStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  padding: 12,
+  background: "white",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+};
+
+const storeGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, 1fr)",
+  gap: 8,
+};
+
+const storeChipStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+  padding: 10,
+  textAlign: "center",
+  background: "white",
+  fontWeight: 700,
+};
+
+const rowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  padding: "10px 0",
+  borderBottom: "1px solid #eef2f7",
+};
+
 const buttonStyle: React.CSSProperties = {
+  fontFamily: "inherit",
   border: "1px solid #cbd5e1",
   background: "white",
   borderRadius: 12,
@@ -1230,6 +1241,7 @@ const summaryValueStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
+  fontFamily: "inherit",
   width: "100%",
   padding: "10px 12px",
   borderRadius: 12,
@@ -1254,6 +1266,23 @@ const modalStyle: React.CSSProperties = {
   borderRadius: 20,
   padding: 20,
   boxSizing: "border-box",
+};
+
+const previewBoxStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  padding: 12,
+  background: "#f8fafc",
+  marginTop: 12,
+  lineHeight: 1.8,
+};
+
+const modalFooterStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 8,
+  marginTop: 16,
+  flexWrap: "wrap",
 };
 
 export default App;
