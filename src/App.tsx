@@ -112,6 +112,7 @@ function sanitizeStores(input: string[]) {
 }
 
 function downloadExcel(filename: string, rows: (string | number)[][]) {
+
   const tableRows = rows
     .map(
       (row) =>
@@ -129,17 +130,17 @@ function downloadExcel(filename: string, rows: (string | number)[][]) {
     .join("");
 
   const html = `
-    <html>
-      <head>
-        <meta charset="UTF-8" />
-        <title>${filename}</title>
-      </head>
-      <body>
-        <table>
-          ${tableRows}
-        </table>
-      </body>
-    </html>
+  <html>
+    <head>
+      <meta charset="UTF-8" />
+      <title>${filename}</title>
+    </head>
+    <body>
+      <table>
+        ${tableRows}
+      </table>
+    </body>
+  </html>
   `;
 
   const blob = new Blob([html], {
@@ -148,14 +149,30 @@ function downloadExcel(filename: string, rows: (string | number)[][]) {
 
   const url = URL.createObjectURL(blob);
 
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.target = "_blank";
-  link.rel = "noopener";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const ua = navigator.userAgent;
+
+  const isAndroidWebView =
+    /Android/i.test(ua) &&
+    (/wv/i.test(ua) || /Version\/\d+\.\d+/i.test(ua));
+
+  if (isAndroidWebView) {
+
+    // ⭐ Android WebView 用這個下載
+    window.location.href = url;
+
+  } else {
+
+    // ⭐ 一般瀏覽器下載
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+  }
 
   setTimeout(() => {
     URL.revokeObjectURL(url);
